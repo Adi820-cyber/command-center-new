@@ -1,0 +1,23 @@
+{
+  "name": "command-center",
+  "private": true,
+  "description": "Command Center — Multi-tenant role-scoped KPI & leadership decision workspace",
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "supabase": "2.117.0"
+  }
+}

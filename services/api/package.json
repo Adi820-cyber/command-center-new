@@ -1,0 +1,34 @@
+{
+  "name": "@orbit/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Command Center backend — Fastify 5 API (Vercel Project 2)",
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env src/app.ts",
+    "knowledge:sync": "node --env-file-if-exists=.env src/knowledge-sync.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint --type-aware"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@orbit/contracts": "*",
+    "@orbit/kpi-framework": "*",
+    "fastify": "^5.12.5",
+    "jose": "^6.2.12",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "rolldown": "1.2.9",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

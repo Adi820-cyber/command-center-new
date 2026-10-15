@@ -1,0 +1,33 @@
+{
+  "name": "@orbit/data-gen",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Deterministic synthetic data generator + invariant checks",
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "generate": "node scripts/generate-seed.ts",
+    "generate:observations": "node scripts/generate-observations.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint --type-aware",
+    "generate:erp": "node scripts/generate-erp-seed.ts",
+    "provision:erp": "node scripts/provision-erp-accounts.ts",
+    "load:reference": "node scripts/load-reference-datasets.ts"
+  },
+  "dependencies": {
+    "@orbit/kpi-framework": "*",
+    "pure-rand": "^8.4.2"
+  },
+  "devDependencies": {
+    "@orbit/contracts": "*",
+    "@types/node": "^22.20.4",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

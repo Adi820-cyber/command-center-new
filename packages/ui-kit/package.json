@@ -1,0 +1,30 @@
+{
+  "name": "@orbit/ui-kit",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Command Center design tokens, visual primitives, and chart wrappers",
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/index.css",
+    "./tokens.css": "./src/tokens/tokens.css"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint --type-aware"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "typescript": "^7.0.2"
+  }
+}

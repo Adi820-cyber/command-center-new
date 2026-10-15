@@ -1,0 +1,160 @@
+/* Brief-only pieces; the shell and exception cards live in workspace.css. */
+
+.brief-period-card {
+  display: grid;
+  min-width: 15rem;
+  gap: var(--orbit-space-1);
+  border: var(--orbit-border-width) solid var(--orbit-color-border);
+  border-radius: var(--orbit-radius-card);
+  padding: var(--orbit-space-4);
+  background: var(--orbit-color-surface);
+  box-shadow: var(--orbit-shadow-surface);
+}
+
+.brief-period-card span,
+.brief-period-card small {
+  color: var(--orbit-color-text-muted);
+  font-size: var(--orbit-font-size-200);
+}
+
+.brief-period-card strong {
+  color: var(--orbit-color-text);
+  font-size: var(--orbit-font-size-500);
+}
+
+.brief-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--orbit-space-4);
+  margin-bottom: var(--orbit-space-10);
+}
+
+.brief-summary > a {
+  display: grid;
+  min-width: 0;
+  gap: var(--orbit-space-2);
+  border: var(--orbit-border-width) solid var(--orbit-color-border);
+  border-top: 0.22rem solid var(--orbit-color-info);
+  border-radius: var(--orbit-radius-card);
+  padding: var(--orbit-space-4);
+  background: var(--orbit-color-surface);
+  box-shadow: var(--orbit-shadow-surface);
+  color: var(--orbit-color-text);
+  text-decoration: none;
+  transition:
+    border-color var(--orbit-duration-fast) var(--orbit-ease-standard),
+    transform var(--orbit-duration-fast) var(--orbit-ease-standard);
+}
+
+.brief-summary > a:hover {
+  border-color: var(--orbit-color-primary);
+  transform: translateY(-0.125rem);
+}
+
+.brief-summary > a[data-tone="danger"] {
+  border-top-color: var(--orbit-color-danger);
+}
+
+.brief-summary > a[data-tone="warning"] {
+  border-top-color: var(--orbit-color-warning);
+}
+
+.brief-summary > a[data-tone="success"] {
+  border-top-color: var(--orbit-color-success);
+}
+
+.brief-summary > a[data-tone="neutral"] {
+  border-top-color: var(--orbit-color-text-muted);
+}
+
+.brief-summary span {
+  display: flex;
+  align-items: center;
+  gap: var(--orbit-space-2);
+  color: var(--orbit-color-text-muted);
+  font-size: var(--orbit-font-size-200);
+  font-weight: var(--orbit-font-weight-semibold);
+}
+
+.brief-summary strong {
+  width: fit-content;
+  color: var(--orbit-color-text);
+  font-size: var(--orbit-font-size-700);
+  line-height: 1;
+}
+
+.brief-summary small {
+  color: var(--orbit-color-text-muted);
+  font-size: var(--orbit-font-size-100);
+}
+
+.brief-limitations {
+  border: var(--orbit-border-width) solid var(--orbit-color-border);
+  border-radius: var(--orbit-radius-card);
+  padding: var(--orbit-space-5);
+  background: var(--orbit-color-surface);
+  box-shadow: var(--orbit-shadow-surface);
+}
+
+.brief-limitations ul {
+  display: grid;
+  gap: var(--orbit-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brief-limitations li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--orbit-space-3);
+  border-top: var(--orbit-border-width) solid var(--orbit-color-border);
+  padding-top: var(--orbit-space-3);
+}
+
+.brief-limitations li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.brief-limitations li strong {
+  color: var(--orbit-color-text);
+  font-size: var(--orbit-font-size-300);
+}
+
+.brief-limitations li p {
+  margin: var(--orbit-space-1) 0 0;
+  color: var(--orbit-color-text-muted);
+  font-size: var(--orbit-font-size-300);
+}
+
+.brief-limitation__icon {
+  color: var(--orbit-color-warning);
+}
+
+@media (max-width: 74rem) {
+  .brief-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .brief-period-card {
+    min-width: 0;
+  }
+
+  .brief-limitations li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .brief-limitations li > .orbit-status {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 29.99rem) {
+  .brief-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
