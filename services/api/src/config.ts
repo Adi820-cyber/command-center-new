@@ -19,6 +19,8 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.url(),
   SUPABASE_JWKS_URL: optional(z.url()),
   DATABASE_URL: optional(z.string().min(1)),
+  KPI_DATABASE_URL: optional(z.string().min(1)),
+  CONTROL_DATABASE_URL: optional(z.string().min(1)),
   ALLOWED_ORIGINS: z.string().default(''),
   ORBIT_LIVE_SOURCES: z.string().default(''),
   /** Which half of Orbit this deployment serves (src/surface.ts). Default `all`. */
@@ -45,6 +47,8 @@ export interface ApiConfig {
   audience: string;
   jwksUrl: URL;
   databaseUrl: string | undefined;
+  kpiDatabaseUrl: string | undefined;
+  controlDatabaseUrl: string | undefined;
   allowedOrigins: readonly string[];
   /** Sources switched from fail-closed to real by `ORBIT_LIVE_SOURCES`. Empty by default. */
   liveSources: ReadonlySet<LiveSource>;
@@ -109,6 +113,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error(`Invalid or missing API environment variables: ${names.join(', ')}`);
   }
   const vars = parsed.data;
+  if (vars.KPI_DATABASE_URL && vars.CONTROL_DATABASE_URL) {
+    throw new Error('Deploy the customer API and control API separately; configure only one database credential in each process.');
+  }
   const base = vars.SUPABASE_URL.replace(/\/+$/, '');
 
   const liveSources = parseLiveSources(vars.ORBIT_LIVE_SOURCES);
@@ -117,6 +124,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   }
 
   return {
+    kpiDatabaseUrl: vars.KPI_DATABASE_URL,
+    controlDatabaseUrl: vars.CONTROL_DATABASE_URL,
     issuer: `${base}/auth/v1`,
     audience: 'authenticated',
     jwksUrl: new URL(vars.SUPABASE_JWKS_URL ?? `${base}/auth/v1/.well-known/jwks.json`),

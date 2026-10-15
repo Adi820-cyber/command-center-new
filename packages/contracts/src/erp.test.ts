@@ -27,8 +27,8 @@ const base = {
 } as const;
 
 describe('operator roles (ADR 0016)', () => {
-  it('are exactly admin and hospital, and never a workbook role', () => {
-    expect([...OPERATOR_ROLE_IDS]).toEqual(['admin', 'hospital']);
+  it('retain legacy operators plus the separate platform operator', () => {
+    expect([...OPERATOR_ROLE_IDS]).toEqual(['admin', 'hospital', 'platform-operator']);
     for (const role of OPERATOR_ROLE_IDS) {
       expect((ROLE_IDS as readonly string[]).includes(role)).toBe(false);
     }

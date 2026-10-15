@@ -69,6 +69,6 @@ describe("role view coverage", () => {
 
   it("returns null for a role the framework does not define", () => {
     // The genuine fail-closed case, and the only one: not "copy not written yet".
-    expect(roleViewConfigFor("not-a-real-role" as never)).toBeNull();
+    expect(roleViewConfigFor("not-a-real-role")).toBeNull();
   });
 });

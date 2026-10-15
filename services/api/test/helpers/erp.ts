@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { OperatorClaims } from '@orbit/contracts';
-import { buildApp } from '../../src/build.ts';
+import { buildApp } from './legacy-build.ts';
 import type { ErpStore, ErpWrite } from '../../src/modules/erp/ports.ts';
 import type { ApiSurface } from '../../src/surface.ts';
 import { fixtureMemberships, MEMBERSHIPS, ORG_A, SUBJECT } from './fixtures.ts';

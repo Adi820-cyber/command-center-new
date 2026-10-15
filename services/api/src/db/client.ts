@@ -12,7 +12,7 @@ export interface Database {
 }
 
 export interface DatabaseOptions {
-  /** Supavisor transaction-mode pooler URL, connecting as `orbit_app` (ARCH §6.3). */
+  /** Supavisor transaction-mode URL for a restricted login granted to its API role. */
   url: string;
   /** TLS is required for hosted Supabase; only a local test database may disable it. */
   ssl?: boolean;
@@ -53,8 +53,8 @@ export function databaseFromSql(sql: Sql): Database {
   };
 }
 
-/** Small enough for a serverless instance, large enough for one request's parallel reads. */
-export const API_POOL_SIZE = 4;
+/** One client-side connection per serverless instance; the pooler shares database connections. */
+export const API_POOL_SIZE = 1;
 
 /**
  * One lazily created, small connection pool for the process.
@@ -62,10 +62,12 @@ export const API_POOL_SIZE = 4;
  * Opening a connection per transaction cost a full TLS + pooler handshake
  * each time (measured 3.7s cold to ap-south-1), and one request runs several
  * transactions. Reuse is safe here because nothing protected lives on the
- * connection: claims are set with transaction-local `set_config(..., true)`
- * (see rls.ts) and vanish at commit or rollback, which the RLS leak tests
- * assert against the real pooler. No query results are cached (ARCH §6.3).
- * Idle connections close after a few seconds, so an idle instance holds none.
+ * connection: the verified subject and `SET LOCAL ROLE` are transaction-scoped
+ * and vanish at commit or rollback. The hosted pooler behavior still needs a
+ * live integration test; local PGlite checks do not prove it. No query results
+ * are cached. Idle connections close after a few seconds, so idle instances
+ * hold none. A single connection queues concurrent transactions per instance;
+ * revisit only after a hosted load test demonstrates a need to raise it.
  */
 export function createDatabase(options: DatabaseOptions): Database {
   let sql: Sql | undefined;

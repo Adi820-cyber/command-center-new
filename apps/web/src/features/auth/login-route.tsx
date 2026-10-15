@@ -14,7 +14,6 @@ import {
   getCurrentSession,
   signInWithPassword,
 } from "../../lib/auth";
-import { createApiClient, httpTransport } from "../../lib/api";
 import "./login.css";
 
 interface LoginFieldErrors {
@@ -43,11 +42,11 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * the verified membership. Not a secret.
  */
 export const DEMO_SIGN_IN_DOMAIN = "kestrion.demo";
-const signInIdPattern = /^[a-z][a-z0-9._-]{1,39}$/i;
+
 
 /** An email stays as typed; a short sign-in ID becomes an address on the demo domain. */
 export function signInEmail(value: string) {
-  return !value.includes("@") && signInIdPattern.test(value) ? `${value.toLowerCase()}@${DEMO_SIGN_IN_DOMAIN}` : value;
+  return value;
 }
 
 export function getSafeReturnPath(value: string | null) {
@@ -75,9 +74,9 @@ export function validateLoginInput(formData: FormData):
   const errors: LoginFieldErrors = {};
 
   if (!typed) {
-    errors.email = "Enter your work email or sign-in ID.";
+    errors.email = "Enter your work email.";
   } else if (!emailPattern.test(email)) {
-    errors.email = "Enter a valid work email or sign-in ID.";
+    errors.email = "Enter a valid work email.";
   }
 
   if (!password) {
@@ -128,7 +127,7 @@ export async function loginAction({ request }: ActionFunctionArgs) {
     if (!result.ok) {
       const message =
         result.reason === "invalid_credentials"
-          ? "We couldn't sign you in with those credentials. Check your email or sign-in ID and password."
+          ? "We couldn't sign you in with those credentials. Check your email and password."
           : "The sign-in service is unavailable right now. Please try again shortly.";
 
       return data<LoginActionData>(
@@ -165,20 +164,7 @@ export async function loginAction({ request }: ActionFunctionArgs) {
  * redirect, found in testing. Any failure here falls back to `/`, whose own
  * checks then decide.
  */
-async function landingPath(): Promise<string> {
-  try {
-    const session = await getCurrentSession();
-    if (!session) return "/";
-    const client = createApiClient(httpTransport(session.access_token));
-    const identity = await client.identity();
-    if (!("operatorRole" in identity)) return "/";
-    if (identity.operatorRole !== "admin") return "/erp";
-    const first = (await client.erp.reference()).facilities[0]?.facilityId;
-    return first ? `/erp?${new URLSearchParams({ facility: first }).toString()}` : "/erp";
-  } catch {
-    return "/";
-  }
-}
+async function landingPath(): Promise<string> { return "/"; }
 
 function MailIcon() {
   return (
@@ -281,7 +267,7 @@ export function LoginRoute() {
 
           <Form className="login-form" method="post" noValidate>
             <div className="login-field">
-              <label htmlFor="email">Work email or sign-in ID</label>
+              <label htmlFor="email">Work email</label>
               <div className="login-control" data-invalid={Boolean(actionData?.errors?.email)}>
                 <span className="login-control__icon"><MailIcon /></span>
                 <input
@@ -344,8 +330,8 @@ export function LoginRoute() {
           </div>
 
           <div className="login-demo-note">
-            <span className="chip-illustrative">Illustrative environment</span>
-            <p>Fictional demonstration company. No patient or employee records are used.</p>
+            <span className="chip-illustrative">Organization workspace</span>
+            <p>Your organization manages access, KPI definitions, and approval of its data.</p>
           </div>
         </div>
 

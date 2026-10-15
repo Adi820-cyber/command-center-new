@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_SIGN_IN_DOMAIN, getSafeReturnPath, signInEmail, validateLoginInput } from "./login-route";
+import { getSafeReturnPath, signInEmail, validateLoginInput } from "./login-route";
 
 describe("getSafeReturnPath", () => {
   it("keeps a local Orbit path", () => {
@@ -38,7 +38,7 @@ describe("validateLoginInput", () => {
     expect(result).toEqual({
       email: "",
       errors: {
-        email: "Enter your work email or sign-in ID.",
+        email: "Enter your work email.",
         password: "Enter your password.",
       },
     });
@@ -51,19 +51,14 @@ describe("validateLoginInput", () => {
 
     expect(validateLoginInput(formData)).toEqual({
       email: value,
-      errors: { email: "Enter a valid work email or sign-in ID." },
+      errors: { email: "Enter a valid work email." },
     });
   });
 
-  it("completes a short sign-in ID with the demo domain, and leaves emails alone", () => {
-    const formData = new FormData();
-    formData.set("email", " Hospital ");
-    formData.set("password", "checked-by-supabase-not-here");
-
-    expect(validateLoginInput(formData)).toEqual({
-      input: { email: `hospital@${DEMO_SIGN_IN_DOMAIN}`, password: "checked-by-supabase-not-here" },
-    });
-    expect(signInEmail("admin")).toBe("admin@kestrion.demo");
+  it("does not expand hospital demo aliases in the SaaS login", () => {
+    const formData = new FormData(); formData.set("email", "hospital"); formData.set("password", "provided");
+    expect(validateLoginInput(formData)).toEqual({email:"hospital",errors:{email:"Enter a valid work email."}});
+    expect(signInEmail("admin")).toBe("admin");
     expect(signInEmail("leader@organization.org")).toBe("leader@organization.org");
   });
 });

@@ -333,7 +333,7 @@ describe.skipIf(!integrationUrl)(
      * less than it appears to.
      */
     it('refuses a forged role at the contract boundary, before any SQL runs', async () => {
-      const forged = { ...roleClaims('regional-coo'), role: 'not-a-real-role' } as unknown as MembershipClaims;
+      const forged = { ...roleClaims('regional-coo'), role: 'not-a-real-role' };
       await expect(withMembershipTx(db, forged, async () => 'reached sql')).rejects.toThrow();
     });
 
