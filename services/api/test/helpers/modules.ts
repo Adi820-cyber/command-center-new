@@ -11,7 +11,7 @@ import type {
   Period,
   ScopeEntity,
 } from '@orbit/contracts';
-import { buildApp } from '../../src/build.ts';
+import { buildApp } from './legacy-build.ts';
 import { ILLUSTRATIVE_DISCLOSURE, type ModuleDeps } from '../../src/modules/index.ts';
 import { createMatrixTransitionPolicy, PROPOSED_TRANSITIONS } from '../../src/modules/actions/transitions.ts';
 import type { ActionRelation, AuditDraft, NewAction } from '../../src/modules/ports.ts';

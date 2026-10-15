@@ -1,4 +1,5 @@
 import {
+  CanonicalRoleIdSchema,
   ActionEventSchema,
   ActionSchema,
   AskRequestSchema,
@@ -282,7 +283,9 @@ interface PreviewEntitlement {
 }
 
 function entitlementsFor(role: RoleId): readonly PreviewEntitlement[] {
-  return getAssignmentsForRole(role).map((assignment) => ({
+  const canonical = CanonicalRoleIdSchema.safeParse(role);
+  if (!canonical.success) return [];
+  return getAssignmentsForRole(canonical.data).map((assignment) => ({
     assignmentId: assignment.assignmentId,
     grains:
       role === "regional-coo"

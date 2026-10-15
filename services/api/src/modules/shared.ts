@@ -9,7 +9,6 @@ import {
   type ScopeEntity,
 } from '@orbit/contracts';
 import { getAssignment, getDefinitionFamiliesForAssignment, type RoleKpiAssignment } from '@orbit/kpi-framework';
-import { INDUSTRY_TEMPLATES } from './saas/routes.ts';
 import { ApiError } from '../plugins/errors.ts';
 import { decideScope } from '../plugins/scope.ts';
 import { DatasetInfoSchema, type AuditDraft, type DatasetInfo, type ModuleDeps } from './ports.ts';
@@ -69,34 +68,6 @@ export function frameworkAssignment(membership: MembershipClaims, assignmentId: 
   const assignment = getAssignment(assignmentId);
   if (assignment && assignment.roleId === membership.role) {
     return assignment;
-  }
-  const custom = INDUSTRY_TEMPLATES.flatMap((t) => t.starterKpis).find(
-    (k) => k.assignmentId === assignmentId && k.roleId === membership.role,
-  );
-  if (custom) {
-    return {
-      assignmentId: custom.assignmentId,
-      sourceRow: 1,
-      level: 'Organization leadership',
-      role: custom.roleId,
-      roleId: custom.roleId as RoleKpiAssignment['roleId'],
-      reportsTo: 'Board',
-      keyDeliverable: custom.keyDeliverable,
-      kpi: custom.kpi,
-      definition: custom.definition,
-      weight: custom.weight,
-      targetBasis: custom.targetBasis,
-      review: custom.review,
-      primaryDataSource: custom.primaryDataSource,
-      keyCollaborator: '',
-      definitionFamilies: [custom.family],
-      unresolvedReason: null,
-      catalogId: custom.catalogId,
-      domain: custom.domain as RoleKpiAssignment['domain'],
-      aggType: custom.formula.aggType,
-      unit: custom.unit as RoleKpiAssignment['unit'],
-      direction: custom.thresholds.direction,
-    };
   }
   throw new ApiError('internal', INTERNAL, 'entitlement_references_unknown_assignment');
 }

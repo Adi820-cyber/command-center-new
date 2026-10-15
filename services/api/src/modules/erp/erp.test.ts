@@ -15,7 +15,7 @@ import {
   STAFF_ID,
 } from '../../../test/helpers/erp.ts';
 import { ORG_A } from '../../../test/helpers/fixtures.ts';
-import { buildApp } from '../../build.ts';
+import { buildApp } from '../../../test/helpers/legacy-build.ts';
 import { pendingModuleDeps } from '../pending.ts';
 import { fixtureMemberships } from '../../../test/helpers/fixtures.ts';
 import { OPERATOR_MEMBERSHIPS } from '../../../test/helpers/erp.ts';

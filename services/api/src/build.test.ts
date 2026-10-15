@@ -64,7 +64,7 @@ describe('health', () => {
 
 describe('protected routes', () => {
   it('require authentication under /api', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/me' });
+    const response = await app.inject({ method: 'GET', url: '/api/saas/organizations' });
     expect(response.statusCode).toBe(401);
   });
 
@@ -102,7 +102,7 @@ describe('CORS', () => {
   function preflight(origin: string) {
     return app.inject({
       method: 'OPTIONS',
-      url: '/api/me',
+      url: '/api/saas/organizations',
       headers: {
         origin,
         'access-control-request-method': 'GET',

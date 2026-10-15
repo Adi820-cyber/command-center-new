@@ -1,28 +1,38 @@
-# Command Center
+# Command Center — configurable KPI workspace
 
-**Command Center** is a multi-tenant, role-scoped healthcare leadership decision workspace and hospital operations platform (built on the Orbit full-stack architecture and the 14-role, 109-KPI Command Center catalog `RKM-001` to `RKM-109`). It helps healthcare leaders move from **See → Understand → Act** through a morning brief, priority inbox, KPI explorer, governed Ask assistant, evidence cards, hospital operations ERP, revenue tracking, outbreak watch, and persisted internal actions.
+This source has been refactored toward a multi-organization KPI product. Each customer configures its own organization units, members, roles, measures, KPI definitions, reporting inputs, approvals and follow-up actions. The former hospital ERP is no longer part of the active application routes.
 
-## Architecture Highlights
+> **Current status: working prototype, not a hosted or production-ready SaaS.** The fresh-project Supabase migration and tenant-separated APIs are prepared, and the source has been exercised locally with synthetic data. A new hosted project was not created: the selected `gbtech` Supabase organization is at the Free-plan limit of two active projects. Hosted migration, database-login grants, authentication, storage, backup and recovery checks remain open.
 
-- **One Login (`Supabase Auth`)**: Proves identity and issues asymmetric JWTs.
-- **One API (`services/api` — Fastify 5 + Zod 4 Contracts)**: Verifies JWTs via JWKS, resolves the caller's `organization_id`, `role_id`, and `scopes` from `org_memberships`, checks entitlements, and sets per-transaction RLS claims (`SET LOCAL orbit.membership`).
-- **One Shared Database (`Supabase Postgres + pgvector`)**:
-  - Multi-tenant tables (`organizations`, `regions`, `facilities`, `coes`, `org_memberships`, `org_roles`, `org_kpi_definitions`, `org_role_kpi_assignments`, `kpi_observations`, `exceptions`, `actions`, `audit_events`) scoped by `organization_id` with forced Row-Level Security (`ENABLE` + `FORCE ROW LEVEL SECURITY`).
-  - Full 109-KPI Command Center catalog (`RKM-001` to `RKM-109`) across 14 leadership roles, 29 definition families, and 10 domains (`packages/kpi-framework`), plus `data/snapshots/real-kpis.json` (3,804 real/proxy aggregate rows across 35 KPIs).
-- **Calculation & Import Jobs (`packages/data-gen`, `tools/forecast`, `services/simulator`)**: Only privileged jobs write `kpi_observations` (`live`, `proxy`, `illustrative`, `sample`) and outbreak forecasts.
-- **Dual Web Surfaces (`apps/web` — React 19 + React Router 7 + Vite 8)**: Serves both the **Command Center Leadership Workspace** and the **Hospital Operations ERP** (`VITE_APP_SURFACE=erp`).
+## Start here
 
-## Monorepo Layout
+- [Implementation tasks](docs/saas-tasks.md) — completed source work, open release gates and developer steps.
+- [Architecture](docs/saas-architecture.md) — product boundary, tenant model, KPI calculation and honest privacy limits.
+- [First deployment runbook](docs/saas-runbook.md) — fresh Supabase setup and safe credential separation.
+- [Product decision](docs/decisions/0025-generic-kpi-platform.md) — current product scope supersedes older hospital-specific planning documents.
 
-| Path | Purpose |
-|---|---|
-| `apps/web` | Command Center leadership web app and Hospital Operations ERP (`VITE_APP_SURFACE`) |
-| `services/api` | Fastify 5 backend API with JWKS auth, scope/entitlement enforcement, and Postgres RLS |
-| `services/simulator` | Live hospital simulator driving operational activity through the API |
-| `packages/contracts` | Shared Zod 4 schemas and TypeScript types (`@orbit/contracts`) |
-| `packages/kpi-framework` | Generated 14-role, 109-KPI (`RKM-001`–`RKM-109`), 10-domain Command Center catalog (`@orbit/kpi-framework`) |
-| `packages/data-gen` | Deterministic KPI & ERP seed generator and reference dataset loader (`@orbit/data-gen`) |
-| `packages/ui-kit` | Command Center design tokens, `CommandCenterBrand`, and chart primitives (`@orbit/ui-kit`) |
-| `supabase/migrations` | 25 Postgres migrations with forced Row-Level Security and multi-tenant SaaS KPI tables |
-| `data/snapshots` | Manifests and `real-kpis.json` (3,804 delivered real/proxy KPI rows) |
-| `tools/forecast` | Python 3.12 XGBoost (`count:poisson`) outbreak forecasting job |
+Older hospital plans under `docs/orbit/` and the root `supabase/` migration history are retained for reference. They are historical; the current product documentation and the fresh migration under `database/supabase/` take precedence.
+
+## Current capabilities
+
+- Multiple organizations per account, customer-owned members and configurable roles.
+- Platform-side organization setup and configuration proposals, with customer review and activation.
+- Tenant-scoped units, measures and versioned KPI definitions using bounded arithmetic formulas.
+- Manual entry and CSV text-paste for aggregate measures, reviewer approval, calculation, result evidence and actions. Private file storage/import staging is not implemented.
+- Customer workspace and a distinct operator console; restricted database roles and forced row-level security policies are in the fresh-project migration.
+
+## Important limits
+
+- Only a small arithmetic expression set is supported. Unsupported aggregation, joins, distinct counts, forecasting and connectors require reviewed product work; the system must not guess a result.
+- Platform account separation is designed and locally exercised. A hosted Supabase deployment and a real database-role/RLS test have not yet been completed.
+- This does not prove that a provider or infrastructure administrator can never access plaintext. Do not make that promise for managed hosting.
+- The migration in `database/supabase/migrations/20261015000100_kpi_platform.sql` is a **fresh-project bootstrap**. It is not a migration plan for the ZIP's old hospital database. Never push the historical `supabase/` migration chain into a new SaaS project.
+- Included legacy datasets/workbooks have unresolved source and redistribution status. Do not use them as customer data or include them in a public SaaS source release until reviewed.
+
+## Requirements and setup
+
+- Node.js `>=22.18 <23`.
+- Install the locked dependencies with `npm ci` and use the workspace scripts for typecheck, lint, tests and builds.
+- Use a fresh Supabase project and follow [the runbook](docs/saas-runbook.md) before connecting any real organization.
+
+No production API credential belongs in a browser `VITE_*` variable. The customer-data API and the control API use different restricted database credentials and must be deployed as separate API processes.

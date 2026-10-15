@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { generateKeyPair } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ErrorEnvelopeSchema, MeResponseSchema } from '@orbit/contracts';
-import { buildApp } from '../build.ts';
+import { buildApp } from '../../test/helpers/legacy-build.ts';
 import { pendingModuleDeps } from '../modules/pending.ts';
 import { fixtureMemberships, MEMBERSHIPS, SUBJECT } from '../../test/helpers/fixtures.ts';
 import { createTestIssuer, signHs256, TEST_AUDIENCE, TEST_ISSUER, unsignedToken } from '../../test/helpers/tokens.ts';

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { ErrorEnvelopeSchema } from '@orbit/contracts';
-import { buildApp } from '../build.ts';
+import { buildApp } from '../../test/helpers/legacy-build.ts';
 import { fixtureMemberships, SUBJECT } from '../../test/helpers/fixtures.ts';
 import { createTestIssuer, TEST_AUDIENCE, TEST_ISSUER } from '../../test/helpers/tokens.ts';
 import { pendingModuleDeps } from './pending.ts';

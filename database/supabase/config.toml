@@ -1,0 +1,4 @@
+project_id = "command-center-saas"
+
+[db.seed]
+enabled = false
