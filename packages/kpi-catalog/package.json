@@ -1,0 +1,27 @@
+{
+  "name": "@orbit/kpi-catalog",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Standard KPI catalog: measures, KPI definitions with formulas, and role templates. Seeded into the database; never edited at runtime.",
+  "engines": {
+    "node": ">=22.18 <23"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint --type-aware",
+    "seed:sql": "node scripts/generate-seed.ts"
+  },
+  "dependencies": {
+    "@orbit/contracts": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

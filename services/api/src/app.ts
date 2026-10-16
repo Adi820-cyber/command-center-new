@@ -14,6 +14,7 @@ buildApp({
   logger: true,
   database: config.kpiDatabaseUrl ? createDatabase({ url: config.kpiDatabaseUrl }) : undefined,
   controlDatabase: config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined,
+  askProviders: config.askProviders,
   allowedOrigins: config.allowedOrigins,
   auth: {
     getKey: createRemoteJWKSet(config.jwksUrl),

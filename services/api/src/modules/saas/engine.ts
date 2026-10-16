@@ -1,9 +1,18 @@
 import {
   FormulaSchema,
+  formulaRefs,
+  refKey,
   type Formula,
   type CalculationValue,
 } from "@orbit/contracts";
 
+/**
+ * Exact decimal arithmetic for KPI formulas.
+ *
+ * Every value is a fraction of two BigInts, so `0.1 + 0.2` is exactly `0.3`
+ * and a long chain of operations never drifts. Results are rounded once, at
+ * the end, to ten decimal places.
+ */
 type Fraction = { n: bigint; d: bigint };
 function gcd(a: bigint, b: bigint): bigint {
   a = a < 0n ? -a : a;
@@ -35,23 +44,48 @@ function render(v: Fraction): string {
     .replace(/0+$/, "");
   return `${negative && rounded ? "-" : ""}${whole}${tail ? "." + tail : ""}`;
 }
-export function measureKeys(formula: Formula): string[] {
-  if (formula.op === "measure") return [formula.key];
-  if (formula.op === "constant") return [];
-  return [
-    ...new Set([...measureKeys(formula.left), ...measureKeys(formula.right)]),
-  ];
+/** -1, 0 or 1. Denominators are always positive. */
+const compare = (a: Fraction, b: Fraction): number => {
+  const diff = a.n * b.d - b.n * a.d;
+  return diff < 0n ? -1 : diff > 0n ? 1 : 0;
+};
+
+/** Base measure keys a formula reads, whatever period they come from. */
+export { formulaMeasureKeys as measureKeys } from "@orbit/contracts";
+
+export interface CalculationContext {
+  /** Days in the reporting period, for `period_days`. */
+  periodDays: number;
 }
+
+/**
+ * Evaluates a formula. `values` maps a reference (`revenue`,
+ * `revenue@previous`, `revenue@year_ago`) to a decimal string. Any reference
+ * that is absent makes the result "missing"; a zero denominator makes it
+ * "not applicable".
+ */
 export function calculate(
   raw: unknown,
   values: ReadonlyMap<string, string>,
+  context: CalculationContext = { periodDays: 30 },
 ): CalculationValue {
   const formula = FormulaSchema.parse(raw);
-  const missing = measureKeys(formula).filter((key) => !values.has(key));
+  const missing = formulaRefs(formula).filter((ref) => !values.has(ref));
   if (missing.length) return { status: "missing", measures: missing };
+
   function visit(node: Formula): Fraction | null {
-    if (node.op === "constant") return decimal(node.value);
-    if (node.op === "measure") return decimal(values.get(node.key)!);
+    switch (node.op) {
+      case "constant":
+        return decimal(node.value);
+      case "period_days":
+        return fraction(BigInt(context.periodDays), 1n);
+      case "measure":
+        return decimal(values.get(refKey(node.key, node.period))!);
+      case "abs": {
+        const a = visit(node.arg);
+        return a && { n: a.n < 0n ? -a.n : a.n, d: a.d };
+      }
+    }
     const a = visit(node.left);
     const b = visit(node.right);
     if (!a || !b) return null;
@@ -62,6 +96,10 @@ export function calculate(
         return fraction(a.n * b.d - b.n * a.d, a.d * b.d);
       case "multiply":
         return fraction(a.n * b.n, a.d * b.d);
+      case "min":
+        return compare(a, b) <= 0 ? a : b;
+      case "max":
+        return compare(a, b) >= 0 ? a : b;
       case "divide":
       case "percent":
         return b.n === 0n
@@ -79,6 +117,7 @@ export function calculate(
     ? { status: "available", value: render(result) }
     : { status: "not_applicable", reason: "zero_denominator" };
 }
+
 export function onTarget(
   value: CalculationValue,
   target: string | null,
@@ -90,38 +129,6 @@ export function onTarget(
     direction === "neutral"
   )
     return null;
-  const a = decimal(value.value);
-  const b = decimal(target);
-  const diff = a.n * b.d - b.n * a.d;
-  return direction === "higher" ? diff >= 0n : diff <= 0n;
-}
-
-/** Unit algebra: addition requires like units; percent requires like dimensions. */
-export function formulaUnit(
-  formula: Formula,
-  units: ReadonlyMap<string, string>,
-): string {
-  if (formula.op === "constant") return "1";
-  if (formula.op === "measure") {
-    const unit = units.get(formula.key);
-    if (!unit) throw new Error(`Unknown measure: ${formula.key}`);
-    return unit;
-  }
-  const a = formulaUnit(formula.left, units),
-    b = formulaUnit(formula.right, units);
-  if (formula.op === "add" || formula.op === "subtract") {
-    if (a !== b)
-      throw new Error("Addition and subtraction require matching units.");
-    return a;
-  }
-  if (formula.op === "percent") {
-    if (a !== b)
-      throw new Error(
-        "A percentage requires numerator and denominator in the same unit.",
-      );
-    return "%";
-  }
-  if (formula.op === "divide")
-    return a === b ? "1" : b === "1" ? a : `${a}/${b}`;
-  return a === "1" ? b : b === "1" ? a : `${a}*${b}`;
+  const diff = compare(decimal(value.value), decimal(target));
+  return direction === "higher" ? diff >= 0 : diff <= 0;
 }

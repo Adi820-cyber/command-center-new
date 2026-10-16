@@ -1,5 +1,5 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import { randomBytes } from "node:crypto";
+import type { FastifyInstance } from "fastify";
 import { jwtVerify } from "jose";
 import { z } from "zod";
 import {
@@ -9,7 +9,7 @@ import {
   SettingsSchema,
   PeriodLockSchema,
   ActionTransitionSchema,
-  FormulaSchema,
+  formulaUnit,
   InputBatchSchema,
   InviteSchema,
   NewActionSchema,
@@ -18,144 +18,22 @@ import {
   NewRoleSchema,
   NewUnitSchema,
   TenantListSchema,
-  WorkspaceSchema,
   ResultSchema,
-  type Capability,
 } from "@orbit/contracts";
-import type { Database, Tx } from "../../db/client.ts";
-import { verifyAccessToken, type AuthOptions } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
-import { calculate, measureKeys, onTarget, formulaUnit } from "./engine.ts";
+import { measureKeys } from "./engine.ts";
+import { recalculateAfterApproval } from "./calculation.ts";
+import { audit, hash, input, inSubject, makeRunners, owner, permit, uuid, type SaasOptions } from "./helpers.ts";
+import { loadWorkspace } from "./workspace.ts";
+import { registerV2Routes } from "./v2.ts";
 
-const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-const uuid = z.uuid();
-function input<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
-  const result = schema.safeParse(value);
-  if (!result.success)
-    throw new ApiError(
-      "invalid_request",
-      result.error.issues[0]?.message ?? "Invalid request.",
-    );
-  return result.data;
-}
-async function audit(
-  tx: Tx,
-  tenant: string,
-  subject: string,
-  event: string,
-  resource: string | null = null,
-) {
-  await tx.query(
-    "insert into kpi.audit(tenant_id,subject,event,resource_id) values($1,$2,$3,$4)",
-    [tenant, subject, event, resource],
-  );
-}
-async function permit(
-  tx: Tx,
-  tenant: string,
-  capability: Capability,
-  unit: string | null = null,
-  kpi: string | null = null,
-) {
-  const [row] = await tx.query("select kpi.allowed($1,$2,$3,$4) as allowed", [
-    tenant,
-    capability,
-    unit,
-    kpi,
-  ]);
-  if (row?.allowed !== true)
-    throw new ApiError(
-      "forbidden",
-      "Your account does not have permission for this operation.",
-    );
-}
-async function owner(tx: Tx, tenant: string) {
-  const [row] = await tx.query("select kpi.is_owner($1) as allowed", [tenant]);
-  if (row?.allowed !== true)
-    throw new ApiError(
-      "forbidden",
-      "An organization owner must approve this change.",
-    );
-}
-async function inSubject<T>(
-  db: Database | undefined,
-  subject: string,
-  fn: (tx: Tx) => Promise<T>,
-  role: "kpi_app" | "kpi_control_app" = "kpi_app",
-): Promise<T> {
-  if (!db)
-    throw new ApiError("unavailable", "The KPI database is not configured.");
-  try {
-    return await db.transaction(async (tx) => {
-      // Switch from the connection login to one deliberately narrow SQL role
-      // inside the transaction. The role names are a closed union, never input.
-      await tx.query(`set local role ${role}`);
-      await tx.query("select set_config('kpi.subject',$1,true)", [subject]);
-      await tx.query("select set_config('statement_timeout','10000',true)");
-      return fn(tx);
-    });
-  } catch (e) {
-    if (e instanceof ApiError) throw e;
-    const code =
-      typeof e === "object" && e !== null && "code" in e ? e.code : undefined;
-    if (code === "42501")
-      throw new ApiError(
-        "forbidden",
-        "This operation is not permitted. Check approval and membership rules.",
-      );
-    if (code === "23505")
-      throw new ApiError(
-        "conflict",
-        "This item already exists, has been decided, or its period is locked.",
-      );
-    if (code === "23503" || code === "23514")
-      throw new ApiError(
-        "invalid_request",
-        "A referenced item is invalid for this organization.",
-      );
-    // Never forward SQL errors: detail fields can contain customer values.
-    throw new ApiError(
-      "unavailable",
-      "The operation could not complete. No partial changes were saved.",
-    );
-  }
-}
+export type { SaasOptions } from "./helpers.ts";
 
-export interface SaasOptions {
-  auth: AuthOptions;
-  database?: Database;
-  controlDatabase?: Database;
-}
 export async function registerSaasRoutes(
   app: FastifyInstance,
   options: SaasOptions,
 ): Promise<void> {
-  const subject = (req: FastifyRequest) =>
-    verifyAccessToken(req.headers.authorization, options.auth);
-  async function tenant<T>(
-    req: FastifyRequest,
-    fn: (tx: Tx, tenantId: string, sub: string) => Promise<T>,
-  ) {
-    const sub = await subject(req);
-    const { tenantId } = input(z.object({ tenantId: uuid }), req.params);
-    return inSubject(options.database, sub, async (tx) => {
-      const [membership] = await tx.query(
-        "select kpi.is_member($1) as allowed",
-        [tenantId],
-      );
-      if (membership?.allowed !== true)
-        throw new ApiError(
-          "forbidden",
-          "You do not belong to this organization.",
-        );
-      // Serialize configuration/approval writes for a tenant. All publication is atomic.
-      if (req.method !== "GET")
-        await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-          tenantId,
-        ]);
-      return fn(tx, tenantId, sub);
-    });
-  }
+  const { subject, tenant } = makeRunners(options);
   app.get("/api/saas/organizations", async (req) =>
     inSubject(options.database, await subject(req), async (tx) =>
       TenantListSchema.parse(
@@ -191,56 +69,7 @@ export async function registerSaasRoutes(
     });
   });
   app.get("/api/saas/:tenantId/workspace", async (req) =>
-    tenant(req, async (tx, t, sub) => {
-      const [organization] = await tx.query(
-        "select id,name,kpi.is_owner(id) as owner from kpi.organizations where id=$1",
-        [t],
-      );
-      const units = await tx.query(
-        'select id,name,kind,parent_id as "parentId" from kpi.units where tenant_id=$1 order by name',
-        [t],
-      );
-      const measures = await tx.query(
-        "select key,name,unit from kpi.measures where tenant_id=$1 order by name",
-        [t],
-      );
-      const kpis = await tx.query(
-        "select id,key,version,name,description,unit,formula,direction,target::text,state from kpi.definitions where tenant_id=$1 order by key,version desc",
-        [t],
-      );
-      const roles = await tx.query(
-        `select r.id,r.name,coalesce((select jsonb_agg(jsonb_build_object('capability',g.capability,'unitId',g.unit_id,'kpiId',g.kpi_id)) from kpi.grants g where g.tenant_id=r.tenant_id and g.role_id=r.id),'[]') as grants from kpi.roles r where tenant_id=$1 order by name`,
-        [t],
-      );
-      const members = await tx.query(
-        'select id,subject,display_name as "displayName",owner,active from kpi.memberships where tenant_id=$1 order by id',
-        [t],
-      );
-      const batches = await tx.query(
-        'select id,unit_id as "unitId",period_start::text as start,period_end::text as end,status,origin from kpi.batches where tenant_id=$1 order by created_at desc',
-        [t],
-      );
-      const results = await tx.query(
-        `select distinct on(kpi_id,unit_id,period_start,period_end) id,kpi_id as "kpiId",unit_id as "unitId",period_start::text as start,period_end::text as end,value,origin,computed_at::text as "computedAt",target::text,direction,on_target as "onTarget",input_ids as "inputIds" from kpi.results where tenant_id=$1 order by kpi_id,unit_id,period_start,period_end,computed_at desc`,
-        [t],
-      );
-      const actions = await tx.query(
-        'select id,title,result_id as "resultId",assignee_id as "assigneeId",due_date::text as "dueDate",state,version from kpi.actions where tenant_id=$1 order by due_date',
-        [t],
-      );
-      return WorkspaceSchema.parse({
-        organization,
-        subject: sub,
-        units,
-        measures,
-        kpis,
-        roles,
-        members,
-        batches,
-        results,
-        actions,
-      });
-    }),
+    tenant(req, async (tx, t, sub) => loadWorkspace(tx, t, sub)),
   );
   app.post("/api/saas/:tenantId/units", async (req) =>
     tenant(req, async (tx, t, sub) => {
@@ -368,13 +197,13 @@ export async function registerSaasRoutes(
         "select count(*)::int as n from kpi.definitions where tenant_id=$1",
         [t],
       );
-      if (Number(count?.n) >= 100)
+      if (Number(count?.n) >= 1000)
         throw new ApiError(
           "conflict",
-          "This pilot supports 100 KPI versions per organization.",
+          "An organization can hold up to 1000 KPI versions.",
         );
       const [row] = await tx.query(
-        `insert into kpi.definitions(tenant_id,key,version,name,description,unit,formula,direction,target,created_by) select $1,$2,coalesce(max(version),0)+1,$3,$4,$5,$6::jsonb,$7,$8::numeric,$9 from kpi.definitions where tenant_id=$1 and key=$2 returning id`,
+        `insert into kpi.definitions(tenant_id,key,version,name,description,unit,formula,direction,target,created_by) select $1,$2,coalesce(max(version),0)+1,$3,$4,$5,$6::text::jsonb,$7,$8::numeric,$9 from kpi.definitions where tenant_id=$1 and key=$2 returning id`,
         [
           t,
           b.key,
@@ -487,48 +316,17 @@ export async function registerSaasRoutes(
         "select unit_id,period_start::text,period_end::text from kpi.batches where tenant_id=$1 and id=$2",
         [t, id],
       );
-      const unit = uuid.parse(batch?.unit_id);
-      const start = z.string().parse(batch?.period_start);
-      const end = z.string().parse(batch?.period_end);
-      const rows = await tx.query(
-        `select distinct on(i.measure) i.id,i.measure,i.value::text,b.origin from kpi.inputs i join kpi.batches b on b.tenant_id=i.tenant_id and b.id=i.batch_id where i.tenant_id=$1 and b.unit_id=$2 and b.period_start=$3 and b.period_end=$4 and b.status='approved' order by i.measure,b.approved_at desc,b.id desc`,
-        [t, unit, start, end],
+      const { calculated, units } = await recalculateAfterApproval(
+        tx,
+        t,
+        uuid.parse(batch?.unit_id),
+        {
+          start: z.string().parse(batch?.period_start),
+          end: z.string().parse(batch?.period_end),
+        },
       );
-      const defs = await tx.query(
-        "select * from kpi.calculation_definitions($1,$2)",
-        [t, unit],
-      );
-      const values = new Map(
-        rows.map((r) => [String(r.measure), String(r.value)]),
-      );
-      const run = randomUUID();
-      for (const def of defs) {
-        const formula = FormulaSchema.parse(def.formula);
-        const keys = measureKeys(formula);
-        const used = rows.filter((r) => keys.includes(String(r.measure)));
-        const value = calculate(formula, values);
-        const target =
-          def.target === null ? null : z.string().parse(def.target);
-        await tx.query(
-          "insert into kpi.results(tenant_id,kpi_id,unit_id,period_start,period_end,value,input_ids,origin,target,direction,on_target,run_id) values($1,$2,$3,$4,$5,$6::jsonb,$7::uuid[],$8::text[],$9::numeric,$10,$11,$12)",
-          [
-            t,
-            String(def.id),
-            unit,
-            start,
-            end,
-            JSON.stringify(value),
-            `{${used.map((r) => r.id).join(",")}}`,
-            `{${[...new Set(used.map((r) => r.origin))].join(",")}}`,
-            target,
-            String(def.direction),
-            onTarget(value, target, String(def.direction)),
-            run,
-          ],
-        );
-      }
       await audit(tx, t, sub, "batch.approved", id);
-      return { runId: run, calculated: defs.length };
+      return { calculated, units };
     }),
   );
   app.post("/api/saas/:tenantId/batches/:id/reject", async (req) =>
@@ -675,10 +473,10 @@ export async function registerSaasRoutes(
         "select count(*)::int as n from kpi.definitions where tenant_id=$1",
         [t],
       );
-      if (Number(existingCount?.n) + p.kpis.length > 100)
+      if (Number(existingCount?.n) + p.kpis.length > 1000)
         throw new ApiError(
           "conflict",
-          "This pilot supports 100 KPI versions per organization.",
+          "An organization can hold up to 1000 KPI versions.",
         );
       // Proposals create drafts. Activation remains a separate customer review.
       for (const m of p.measures)
@@ -706,7 +504,7 @@ export async function registerSaasRoutes(
           );
         }
         await tx.query(
-          `insert into kpi.definitions(tenant_id,key,version,name,description,unit,formula,direction,target,created_by) select $1,$2,coalesce(max(version),0)+1,$3,$4,$5,$6::jsonb,$7,$8::numeric,$9 from kpi.definitions where tenant_id=$1 and key=$2`,
+          `insert into kpi.definitions(tenant_id,key,version,name,description,unit,formula,direction,target,created_by) select $1,$2,coalesce(max(version),0)+1,$3,$4,$5,$6::text::jsonb,$7,$8::numeric,$9 from kpi.definitions where tenant_id=$1 and key=$2`,
           [
             t,
             k.key,
@@ -757,7 +555,7 @@ export async function registerSaasRoutes(
     inSubject(options.controlDatabase, await subject(req), async (tx) => {
       return ControlOrganizationListSchema.parse(
         await tx.query(
-          "select id,name from kpi_control.registry order by name",
+          "select id,name,template_id as \"templateId\" from kpi_control.registry order by name",
         ),
       );
     }, "kpi_control_app"),
@@ -767,27 +565,11 @@ export async function registerSaasRoutes(
       const { tenantId } = input(z.object({ tenantId: uuid }), req.params);
       const p = input(SetupProposalSchema, req.body);
       const [row] = await tx.query(
-        "select kpi_control.propose($1,$2::jsonb) as id",
+        "select kpi_control.propose($1,$2::text::jsonb) as id",
         [tenantId, JSON.stringify(p)],
       );
       return row;
     }, "kpi_control_app"),
   );
-  app.post("/api/control/organizations", async (req) =>
-    inSubject(options.controlDatabase, await subject(req), async (tx) => {
-      const b = input(
-        z.strictObject({
-          name: z.string().trim().min(1).max(120),
-          ownerEmail: z.email(),
-        }),
-        req.body,
-      );
-      const token = randomBytes(32).toString("hex");
-      const [row] = await tx.query(
-        "select kpi_control.provision($1,$2,$3) as id",
-        [b.name, b.ownerEmail, hash(token)],
-      );
-      return { id: row?.id, token };
-    }, "kpi_control_app"),
-  );
+  await registerV2Routes(app, options);
 }

@@ -1,0 +1,31 @@
+/** Friendly names for catalog domains, used by the dashboard and the catalog browser. */
+export const DOMAIN_TITLES: Record<string, string> = {
+  finance: "Finance",
+  sales: "Sales",
+  marketing: "Marketing",
+  customer: "Customers and support",
+  hr: "People and HR",
+  operations: "Operations",
+  supply_chain: "Supply chain and procurement",
+  it_engineering: "IT and engineering",
+  quality_safety: "Quality, safety and compliance",
+  healthcare: "Hospitals and clinics",
+  diagnostics: "Diagnostic laboratories",
+  retail: "Retail and e-commerce",
+  manufacturing: "Manufacturing",
+  saas: "Software and subscriptions",
+  professional_services: "Professional services",
+  banking: "Banking and lending",
+  insurance: "Insurance",
+  hospitality: "Hotels and hospitality",
+  education: "Education",
+  logistics: "Logistics and transport",
+  real_estate: "Real estate and construction",
+  telecom: "Telecom",
+  nonprofit: "Non-profit",
+  energy: "Energy and utilities",
+  agriculture: "Agriculture",
+};
+
+export const domainTitle = (domain: string | null | undefined): string =>
+  domain ? (DOMAIN_TITLES[domain] ?? domain.replaceAll("_", " ")) : "Custom KPIs";

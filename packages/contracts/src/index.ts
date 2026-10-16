@@ -19,4 +19,8 @@ export * from './revenue.ts';
 export * from './surveillance.ts';
 export * from './chatbot.ts';
 export * from './operations.ts';
+export * from './formula.ts';
+export * from './format.ts';
+export * from './insights.ts';
 export * from './saas.ts';
+export * from './saas-v2.ts';

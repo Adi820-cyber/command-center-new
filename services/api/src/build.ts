@@ -5,6 +5,7 @@ import { registerErrorHandling } from "./plugins/errors.ts";
 import type { ModuleDeps } from "./modules/ports.ts";
 import type { ApiSurface } from "./surface.ts";
 import type { Database } from "./db/client.ts";
+import type { ModelProvider } from "./modules/ask/narrator.ts";
 import { registerSaasRoutes } from "./modules/saas/routes.ts";
 
 export interface AppOptions {
@@ -12,6 +13,8 @@ export interface AppOptions {
   allowedOrigins: readonly string[];
   database?: Database;
   controlDatabase?: Database;
+  /** Models that may reword an Ask answer. Leave empty to keep Ask fully deterministic. */
+  askProviders?: readonly ModelProvider[];
   logger?: boolean;
   /** Legacy callers may still supply these; no legacy routes are registered. */
   modules?: ModuleDeps;

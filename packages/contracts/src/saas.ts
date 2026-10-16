@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  DecimalSchema,
+  FormulaSchema,
+  MeasureKeySchema,
+} from "./formula.ts";
 
 // Compatibility shapes for archived workbook previews. New tenants use UUID roles below.
 export const IndustryTypeSchema = z.string().trim().min(1).max(80);
@@ -26,10 +31,6 @@ export const DynamicRoleProfileSchema = z.strictObject({
 });
 export type DynamicRoleProfile = z.infer<typeof DynamicRoleProfileSchema>;
 
-export const DecimalSchema = z
-  .string()
-  .regex(/^-?(?:0|[1-9]\d{0,19})(?:\.\d{1,10})?$/);
-export const MeasureKeySchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
 export const CapabilitySchema = z.enum([
   "configure",
   "submit",
@@ -38,51 +39,6 @@ export const CapabilitySchema = z.enum([
   "act",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;
-export type Formula =
-  | { op: "measure"; key: string }
-  | { op: "constant"; value: string }
-  | {
-      op: "add" | "subtract" | "multiply" | "divide" | "percent";
-      left: Formula;
-      right: Formula;
-    };
-// Check depth/node count before recursive schema parsing, including hostile API input.
-function bounded(value: unknown): boolean {
-  const queue: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
-  let count = 0;
-  while (queue.length) {
-    const node = queue.pop()!;
-    if (++count > 63 || node.depth > 8) return false;
-    if (node.value && typeof node.value === "object") {
-      if ("left" in node.value)
-        queue.push({
-          value: Reflect.get(node.value, "left"),
-          depth: node.depth + 1,
-        });
-      if ("right" in node.value)
-        queue.push({
-          value: Reflect.get(node.value, "right"),
-          depth: node.depth + 1,
-        });
-    }
-  }
-  return true;
-}
-const ExpressionSchema: z.ZodType<Formula> = z.lazy(() =>
-  z.union([
-    z.strictObject({ op: z.literal("measure"), key: MeasureKeySchema }),
-    z.strictObject({ op: z.literal("constant"), value: DecimalSchema }),
-    z.strictObject({
-      op: z.enum(["add", "subtract", "multiply", "divide", "percent"]),
-      left: ExpressionSchema,
-      right: ExpressionSchema,
-    }),
-  ]),
-);
-export const FormulaSchema = z
-  .unknown()
-  .refine(bounded, "Formula exceeds complexity limit")
-  .pipe(ExpressionSchema);
 export const SaasPeriodSchema = z
   .strictObject({ start: z.iso.date(), end: z.iso.date() })
   .refine((p) => p.start <= p.end, "Period end precedes start");
@@ -154,7 +110,7 @@ export const CalculationValueSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("available"), value: z.string() }),
   z.strictObject({
     status: z.literal("missing"),
-    measures: z.array(MeasureKeySchema),
+    measures: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}(?:@(?:previous|year_ago))?$/)),
   }),
   z.strictObject({
     status: z.literal("not_applicable"),
@@ -168,18 +124,31 @@ export const TenantSummarySchema = z.strictObject({
   owner: z.boolean(),
 });
 export const TenantListSchema = z.array(TenantSummarySchema);
+export const MeasureSchema = NewMeasureSchema.extend({
+  description: z.string(),
+  /** Whether a parent unit may be calculated by adding up its children. */
+  rollsUp: z.boolean(),
+});
 export const KpiDefinitionSchema = NewKpiSchema.extend({
   id: z.uuid(),
   version: z.number().int().positive(),
   state: z.enum(["draft", "active", "retired"]),
+  /** Catalog domain, such as finance or healthcare. Null for a KPI written from scratch. */
+  domain: z.string().nullable(),
+  /** The catalog entry this KPI was copied from, for example FIN-003. */
+  catalogId: z.string().nullable(),
+  /** Dashboard order from the template; lower comes first. */
+  sortOrder: z.number().int(),
 });
 export const WorkspaceSchema = z.strictObject({
   organization: TenantSummarySchema,
   subject: z.uuid(),
   units: z.array(NewUnitSchema.extend({ id: z.uuid() })),
-  measures: z.array(NewMeasureSchema),
+  measures: z.array(MeasureSchema),
   kpis: z.array(KpiDefinitionSchema),
-  roles: z.array(NewRoleSchema.extend({ id: z.uuid() })),
+  roles: z.array(
+    NewRoleSchema.extend({ id: z.uuid(), templateKey: z.string().nullable() }),
+  ),
   members: z.array(
     z.strictObject({
       id: z.uuid(),
@@ -275,7 +244,12 @@ export const ProposalListSchema = z.array(
   }),
 );
 export const ControlOrganizationListSchema = z.array(
-  z.strictObject({ id: z.uuid(), name: z.string() }),
+  z.strictObject({
+    id: z.uuid(),
+    name: z.string(),
+    /** The template the organisation was created from, if any. */
+    templateId: z.string().nullable(),
+  }),
 );
 export const SettingsSchema = z.strictObject({
   allowSelfApproval: z.boolean(),

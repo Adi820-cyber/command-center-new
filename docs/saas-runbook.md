@@ -17,14 +17,24 @@ After project capacity is available:
 From the repository root, authenticate the Supabase CLI if needed, link `database/supabase` to the new project, inspect the pending migration list, and dry-run before applying:
 
 ```powershell
-npx supabase --workdir database/supabase link --project-ref <new-project-ref>
-npx supabase --workdir database/supabase db push --dry-run
-npx supabase --workdir database/supabase db push
+npx supabase --workdir database link --project-ref <new-project-ref>
+npx supabase --workdir database db push --dry-run
+npx supabase --workdir database db push
 ```
 
-The CLI records successful migrations in the remote migration history and skips them on later pushes. Confirm that it applies only `20261015000100_kpi_platform.sql`; stop if it proposes any hospital migration. The Supabase CLI documents the `db push` and `--dry-run` behavior in its [database migration reference](https://supabase.com/docs/reference/cli/supabase-db-push).
+The CLI records successful migrations in the remote migration history and skips them on later pushes. Confirm that it applies only `20261015000100_kpi_platform.sql` and `20261016000100_catalog_templates_rollup.sql`; stop if it proposes any hospital migration. The working directory is `database` (the folder that contains `supabase/`), not `database/supabase`. The Supabase CLI documents the `db push` and `--dry-run` behavior in its [database migration reference](https://supabase.com/docs/reference/cli/supabase-db-push).
 
 The migration creates schemas `kpi` and `kpi_control`, forced RLS policies, non-login permission roles `kpi_app` and `kpi_control_app`, and no demo organization, operator, seed records, or customer data.
+
+### 2a. Load the KPI catalog
+
+The second migration creates the `kpi_catalog` schema, which is empty until the catalog is loaded. The seed file is generated from `packages/kpi-catalog` and is safe to run again:
+
+```powershell
+npx supabase --workdir database db query --linked -f catalog-seed.sql
+```
+
+Check the counts: 592 KPIs, 521 measures, 20 templates. Re-run the seed after the catalog changes (see [kpi-catalog.md](kpi-catalog.md)). Organizations that already used a template keep their own copy, so reseeding never changes a customer's KPIs.
 
 ## 3. Create two restricted database login roles
 
@@ -82,6 +92,29 @@ The backend refuses to start if both database credentials are set in one process
 3. The organization owner signs in or creates their Supabase Auth account with that email and accepts the invitation. The verified JWT email must match the invitation.
 4. The owner configures their organization units, roles, measures and KPI definitions, or reviews and accepts a platform configuration proposal. Customer owners approve KPI definitions and input batches.
 5. Add further members through owner-managed invitations. A tenant can have 3, 7, or a different number of members; no fixed fourteen-role catalog is required. The current CSV flow pastes aggregate rows into the app; it does not store uploaded files.
+
+## 6a. Create organizations from a template (version 2)
+
+In the control console (`/operator`):
+
+1. Enter the organization name and the owner's email.
+2. Choose an industry template. It brings the KPIs, the roles and what each role can see.
+3. Add people: type them row by row, or paste a list, one person per line: `anita@acme.com, operations; data reviewer`. Roles may be written as the key or the name. Any number of people can be added now, or later with **Add people**.
+4. Press **Create organization**. The page shows one invitation link per person, once. Send each link privately; each works once, for the matching email, and expires in seven days. **Download all links (CSV)** saves them.
+
+The console creates the organization, its roles and the invitations through database functions that return only ids. It cannot read the organization's figures.
+
+### How data gets in (CSV only)
+
+Members with the data-contributor role open **Data & approvals**, choose the KPIs and units they report on, and download the CSV format. It has one column for each input those KPIs need and one row for each unit. A second download explains every column. They fill it in, upload it, see every problem listed row by row, and submit. A data reviewer approves, which calculates every KPI for that unit and for each parent unit above it. A contributor cannot approve their own upload unless the owner allows it in the approval policy.
+
+### Targets
+
+Template KPIs start without targets, so nothing is "off target" until the owner sets them. The owner sets a target on any KPI under **KPI library, Your KPIs**. Changing a target does not create a new version; the formula stays frozen.
+
+### Ask
+
+Ask answers from the same figures the person's own role can see. The answer is built from stored results; no model is involved unless you configure one. To let a model reword answers, set `GROQ_API_KEY` (and optionally `OPENROUTER_API_KEY` with `OPENROUTER_MODEL`) on the customer API. The model receives only the finished answer text and may not add a number that is not already in it. This sends that text to the provider, so decide whether that is acceptable for your customers before enabling it. Leave the keys unset to keep every answer inside your own systems.
 
 ## 7. Verify before using real data
 

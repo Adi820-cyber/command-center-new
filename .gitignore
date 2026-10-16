@@ -76,3 +76,6 @@ DataSets/
 # Python (tools/forecast)
 __pycache__/
 *.pyc
+
+# Local demo stack: generated signing key
+tools/local-demo/key.json

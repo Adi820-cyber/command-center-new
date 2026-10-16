@@ -1,3 +1,4 @@
+import "./saas.css";
 import {
   useCallback,
   useEffect,
@@ -16,20 +17,27 @@ import {
   TenantListSchema,
   WorkspaceSchema,
   type SaasWorkspace,
-  type Formula,
 } from "@orbit/contracts";
 import { getAuthClient, signOut } from "../../lib/auth";
 import { mutate, request } from "./client";
-import "./saas.css";
+import { AskPanel } from "./ask-panel";
+import { CatalogBrowser } from "./catalog-browser";
+import { CsvImport } from "./csv-import";
+import { TargetEditor } from "./target-editor";
+import { CustomKpiForm } from "./custom-kpi";
+import { Dashboard } from "./dashboard";
+import "./v2.css";
 type Tab =
-  | "Overview"
+  | "Dashboard"
+  | "Ask"
   | "Data & approvals"
   | "KPI library"
   | "Actions"
   | "Organization"
   | "Activity";
 const tabs: Tab[] = [
-  "Overview",
+  "Dashboard",
+  "Ask",
   "Data & approvals",
   "KPI library",
   "Actions",
@@ -65,16 +73,23 @@ export function SaasRoute() {
   >([]);
   const [tenant, setTenant] = useState("");
   const [workspace, setWorkspace] = useState<SaasWorkspace>();
-  const [tab, setTab] = useState<Tab>("Overview");
+  const [tab, setTab] = useState<Tab>("Dashboard");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const generation = useRef(0);
+  const [askSeed, setAskSeed] = useState("");
+  const reload = useCallback(async () => {
+    if (!tenant) return;
+    const current = generation.current;
+    const updated = await request(`/api/saas/${tenant}/workspace`, WorkspaceSchema);
+    if (current === generation.current) setWorkspace(updated);
+  }, [tenant]);
   const selectTenant = useCallback((id: string) => {
     ++generation.current;
     setWorkspace(undefined);
     setMessage("");
-    setTab("Overview");
+    setTab("Dashboard");
     setLoading(!!id);
     setTenant(id);
   }, []);
@@ -171,7 +186,7 @@ export function SaasRoute() {
               onClick={() => setTab(item)}
             >
               <span aria-hidden="true">
-                {["◫", "⇅", "◇", "☑", "◎", "◷"][i]}
+                {["◫", "✦", "⇅", "◇", "☑", "◎", "◷"][i]}
               </span>
               {item}
             </button>
@@ -233,18 +248,32 @@ export function SaasRoute() {
           )}
           {workspace && (
             <fieldset disabled={busy} className="saas-content" key={tenant}>
-              {tab === "Overview" && (
-                <Overview workspace={workspace} select={setTab} />
+              {tab === "Dashboard" && (
+                <Dashboard
+                  workspace={workspace}
+                  change={change}
+                  ask={(q) => {
+                    setAskSeed(q);
+                    setTab("Ask");
+                  }}
+                  goto={setTab}
+                />
+              )}
+              {tab === "Ask" && (
+                <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
               )}
               {tab === "KPI library" && (
                 <Kpis workspace={workspace} change={change} />
               )}
               {tab === "Data & approvals" && (
-                <DataEntry
-                  workspace={workspace}
-                  change={change}
-                  tenant={tenant}
-                />
+                <>
+                  <CsvImport workspace={workspace} reload={reload} />
+                  <DataEntry
+                    workspace={workspace}
+                    change={change}
+                    tenant={tenant}
+                  />
+                </>
               )}
               {tab === "Organization" && (
                 <>
@@ -275,7 +304,8 @@ export function SaasRoute() {
 }
 function description(tab: Tab) {
   return {
-    Overview: "A clear view of performance, with evidence behind every number.",
+    Dashboard: "Your morning brief: what changed, what is off target, and what to act on.",
+    Ask: "Ask in plain words. Answers use only what your role can see.",
     "Data & approvals":
       "Submit aggregate measures and review them before publication.",
     "KPI library":
@@ -289,127 +319,13 @@ type Props = {
   workspace: SaasWorkspace;
   change: (path: string, body: unknown) => Promise<void>;
 };
-function Overview({
-  workspace: w,
-  select,
-}: {
-  workspace: SaasWorkspace;
-  select: (tab: Tab) => void;
-}) {
-  const active = w.kpis.filter((k) => k.state === "active");
-  return (
-    <>
-      <div className="saas-stats">
-        {[
-          ["Active KPIs", active.length],
-          [
-            "Awaiting approval",
-            w.batches.filter((b) => b.status === "submitted").length,
-          ],
-          ["Open actions", w.actions.filter((a) => a.state !== "done").length],
-          ["Organization units", w.units.length],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </div>
-        ))}
-      </div>
-      {!active.length && (
-        <Empty>
-          <p className="eyebrow">START WITH WHAT MATTERS</p>
-          <h2>Build your first KPI</h2>
-          <p>
-            Define an input measure, choose a calculation, and approve the
-            definition. Then submit data for your first reporting period.
-          </p>
-          <button onClick={() => select("KPI library")}>
-            Set up KPI library →
-          </button>
-        </Empty>
-      )}
-      <div className="saas-cards">
-        {active.map((k) => {
-          // filter() creates a local copy, so sorting cannot mutate workspace state.
-          const results = w.results.filter((r) => r.kpiId === k.id);
-          // oxlint-disable-next-line unicorn/no-array-sort -- local filtered copy only
-          results.sort(
-              (a, b) =>
-                b.end.localeCompare(a.end) ||
-                b.computedAt.localeCompare(a.computedAt),
-          );
-          return (
-            <section className="saas-card" key={k.id}>
-              <div className="saas-card-title">
-                <h2>{k.name}</h2>
-                <span className="saas-badge">v{k.version}</span>
-              </div>
-              <p className="muted">{k.description}</p>
-              {!results.length && (
-                <p className="saas-value muted">Awaiting approved data</p>
-              )}
-              {results.map((r) => (
-                <div className="saas-observation" key={r.id}>
-                  <div className="saas-card-title">
-                    <span>{w.units.find((u) => u.id === r.unitId)?.name}</span>
-                    <small>
-                      {r.start} — {r.end}
-                    </small>
-                  </div>
-                  <p className="saas-value">
-                    {r.value.status === "available"
-                      ? r.value.value
-                      : r.value.status === "missing"
-                        ? "Missing inputs"
-                        : "Not applicable"}{" "}
-                    <small>
-                      {r.value.status === "available" ? k.unit : ""}
-                    </small>
-                  </p>
-                  <span
-                    className={`saas-badge ${r.onTarget === true ? "good" : r.onTarget === false ? "attention" : ""}`}
-                  >
-                    {r.onTarget === null
-                      ? "Not scored"
-                      : r.onTarget
-                        ? "On target"
-                        : "Needs attention"}
-                  </span>
-                  <p>
-                    <small>
-                      Source: {r.origin.join(", ") || "Formula constant"} ·{" "}
-                      {r.inputIds.length} input records · {r.computedAt}
-                    </small>
-                  </p>
-                  {r.value.status === "missing" && (
-                    <p>Needed: {r.value.measures.join(", ")}</p>
-                  )}
-                  {r.value.status === "not_applicable" && (
-                    <p>The denominator is zero.</p>
-                  )}
-                  <details>
-                    <summary>Definition & evidence</summary>
-                    <p>
-                      Target: {r.target ?? "Not configured"} · Direction:{" "}
-                      {r.direction}
-                    </p>
-                    <pre>{JSON.stringify(k.formula, null, 2)}</pre>
-                    <p>Result ID: {r.id}</p>
-                    <p>Input IDs: {r.inputIds.join(", ") || "None"}</p>
-                  </details>
-                </div>
-              ))}
-            </section>
-          );
-        })}
-      </div>
-    </>
-  );
-}
 function Kpis({ workspace: w, change }: Props) {
-  const [op, setOp] = useState<
-    "measure" | "add" | "subtract" | "multiply" | "divide" | "percent"
-  >("measure");
+  const [search, setSearch] = useState("");
+  const [limit, setLimit] = useState(25);
+  const needle = search.trim().toLowerCase();
+  const matching = w.kpis.filter(
+    (k) => !needle || `${k.name} ${k.description} ${k.catalogId ?? ""} ${k.state}`.toLowerCase().includes(needle),
+  );
   async function measure(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -419,33 +335,94 @@ function Kpis({ workspace: w, change }: Props) {
       unit: text(f, "unit"),
     });
   }
-  async function kpi(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const left: Formula = { op: "measure", key: text(f, "left") };
-    const formula: Formula =
-      op === "measure"
-        ? left
-        : {
-            op,
-            left,
-            right: { op: "measure", key: text(f, "right") },
-          };
-    await change("/kpis", {
-      key: text(f, "key"),
-      name: text(f, "name"),
-      description: text(f, "description"),
-      unit: text(f, "unit"),
-      formula,
-      direction: text(f, "direction"),
-      target: text(f, "target") || null,
-    });
-  }
   return (
     <>
+      <section className="saas-card">
+        <div className="saas-card-title">
+          <h2>Your KPIs</h2>
+          {w.kpis.length > 8 && (
+            <input
+              type="search"
+              aria-label="Search your KPIs"
+              placeholder="Search your KPIs"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setLimit(25);
+              }}
+              style={{ maxWidth: 280 }}
+            />
+          )}
+        </div>
+        {!w.kpis.length ? (
+          <p>No KPIs yet.</p>
+        ) : (
+          <div className="saas-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>KPI</th>
+                  <th>Version</th>
+                  <th>Unit</th>
+                  <th>Target</th>
+                  <th>Status</th>
+                  <th>Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matching.slice(0, limit).map((k) => (
+                  <tr key={k.id}>
+                    <td>
+                      <strong>{k.name}</strong>
+                      <small>{k.description}</small>
+                      <details>
+                        <summary>Calculation</summary>
+                        <pre>{JSON.stringify(k.formula, null, 2)}</pre>
+                        <p>
+                          Target: {k.target ?? "None"} · {k.direction}
+                        </p>
+                      </details>
+                    </td>
+                    <td>{k.version}</td>
+                    <td>{k.unit}</td>
+                    <td>
+                      {k.state !== "retired" && w.organization.owner ? (
+                        <TargetEditor key={`${k.id}:${k.target}`} kpi={k} change={change} />
+                      ) : (
+                        (k.target ?? "—")
+                      )}
+                    </td>
+                    <td>{k.state}</td>
+                    <td>
+                      {k.state === "draft" && w.organization.owner && (
+                        <button
+                          onClick={() =>
+                            void change(`/kpis/${k.id}/activate`, {})
+                          }
+                        >
+                          Approve & activate
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {matching.length > limit && (
+          <div className="csv-actions">
+            <button type="button" className="secondary" onClick={() => setLimit(limit + 25)}>
+              Show {Math.min(25, matching.length - limit)} more of {matching.length - limit}
+            </button>
+          </div>
+        )}
+        {needle && matching.length === 0 && <p className="muted">No KPI matches that search.</p>}
+      </section>
+      <CatalogBrowser workspace={w} change={change} startOpen={!w.kpis.length} />
       <div className="saas-columns">
         <section className="saas-card">
-          <h2>1. Define an input measure</h2>
+          <h2>Define an input</h2>
           <p>
             Use aggregate values, such as completed orders or available hours.
             Do not upload individual records.
@@ -474,145 +451,8 @@ function Kpis({ workspace: w, change }: Props) {
             <button>Add measure</button>
           </form>
         </section>
-        <section className="saas-card">
-          <h2>2. Draft a KPI</h2>
-          <p>
-            Using an existing key creates a new version. The owner reviews and
-            activates it.
-          </p>
-          <form onSubmit={(event) => void kpi(event)}>
-            <div className="saas-form-grid">
-              <Field title="KPI key">
-                <input
-                  name="key"
-                  pattern="[a-z][a-z0-9_]*"
-                  maxLength={64}
-                  required
-                />
-              </Field>
-              <Field title="Name">
-                <input name="name" maxLength={120} required />
-              </Field>
-            </div>
-            <Field title="Definition and input meaning">
-              <textarea name="description" maxLength={2000} required />
-            </Field>
-            <Field title="Calculation">
-              <select
-                value={op}
-                onChange={(e) => {
-                  const value = e.currentTarget.value;
-                  if (
-                    value === "measure" ||
-                    value === "add" ||
-                    value === "subtract" ||
-                    value === "multiply" ||
-                    value === "divide" ||
-                    value === "percent"
-                  )
-                    setOp(value);
-                }}
-              >
-                <option value="measure">Direct input</option>
-                <option value="add">A + B</option>
-                <option value="subtract">A − B</option>
-                <option value="multiply">A × B</option>
-                <option value="divide">A ÷ B</option>
-                <option value="percent">A ÷ B × 100</option>
-              </select>
-            </Field>
-            <div className="saas-form-grid">
-              <Field title="Input A">
-                <select name="left" required>
-                  {w.measures.map((m) => (
-                    <option key={m.key} value={m.key}>
-                      {m.name} ({m.unit})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {op !== "measure" && (
-                <Field title="Input B">
-                  <select name="right" required>
-                    {w.measures.map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.name} ({m.unit})
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-            </div>
-            <div className="saas-form-grid">
-              <Field title="Result unit">
-                <input name="unit" required maxLength={32} />
-              </Field>
-              <Field title="Target (optional)">
-                <input name="target" inputMode="decimal" />
-              </Field>
-              <Field title="Direction">
-                <select name="direction">
-                  <option value="neutral">Monitor only</option>
-                  <option value="higher">Higher is better</option>
-                  <option value="lower">Lower is better</option>
-                </select>
-              </Field>
-            </div>
-            <button disabled={!w.measures.length}>Create draft</button>
-          </form>
-        </section>
+        <CustomKpiForm workspace={w} change={change} />
       </div>
-      <section className="saas-card">
-        <h2>Definition history</h2>
-        {!w.kpis.length ? (
-          <p>No KPIs yet.</p>
-        ) : (
-          <div className="saas-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>KPI</th>
-                  <th>Version</th>
-                  <th>Unit</th>
-                  <th>Status</th>
-                  <th>Review</th>
-                </tr>
-              </thead>
-              <tbody>
-                {w.kpis.map((k) => (
-                  <tr key={k.id}>
-                    <td>
-                      <strong>{k.name}</strong>
-                      <small>{k.description}</small>
-                      <details>
-                        <summary>Calculation</summary>
-                        <pre>{JSON.stringify(k.formula, null, 2)}</pre>
-                        <p>
-                          Target: {k.target ?? "None"} · {k.direction}
-                        </p>
-                      </details>
-                    </td>
-                    <td>{k.version}</td>
-                    <td>{k.unit}</td>
-                    <td>{k.state}</td>
-                    <td>
-                      {k.state === "draft" && w.organization.owner && (
-                        <button
-                          onClick={() =>
-                            void change(`/kpis/${k.id}/activate`, {})
-                          }
-                        >
-                          Approve & activate
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </>
   );
 }
@@ -669,7 +509,10 @@ function DataEntry({
   }
   return (
     <>
-      <section className="saas-card">
+      <details className="saas-card">
+        <summary>
+          <strong>Enter figures by hand instead</strong>
+        </summary>
         <h2>Submit a reporting period</h2>
         <p>
           Leave unavailable measures blank. To correct a value, submit a new
@@ -728,7 +571,7 @@ function DataEntry({
           </details>
           <button disabled={!w.measures.length}>Submit for approval</button>
         </form>
-      </section>
+      </details>
       {error && <p role="alert">{error}</p>}
       {review && (
         <section className="saas-card">
