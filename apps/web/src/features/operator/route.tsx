@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ControlOrganizationListSchema,
   InviteMembersResponseSchema,
+  MutationResponseSchema,
   ProvisionResponseSchema,
   TemplateListSchema,
   type TemplateSummary,
 } from "@orbit/contracts";
+import { getCurrentSession, signOut } from "../../lib/auth";
 import { mutate, request } from "../saas/client";
 import { invitationCsv, parsePeople, type Person, type RoleOption } from "./people";
 import "../saas/saas.css";
@@ -213,7 +215,11 @@ function Links({ owner, members, title }: { owner?: string; members: Issued[]; t
   );
 }
 
+type Access = "checking" | "granted" | "denied";
+
 export function OperatorConsoleRoute() {
+  const [access, setAccess] = useState<Access>("checking");
+  const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [organizations, setOrganizations] = useState<Organizations>([]);
@@ -225,12 +231,31 @@ export function OperatorConsoleRoute() {
   const [morePeople, setMorePeople] = useState<Person[]>([]);
 
   useEffect(() => {
-    request("/api/control/organizations", ControlOrganizationListSchema)
-      .then(setOrganizations)
-      .catch((e) => setMessage(e.message));
-    request("/api/control/templates", TemplateListSchema)
-      .then(setTemplates)
-      .catch((e) => setMessage(e.message));
+    let active = true;
+    void getCurrentSession().then((session) => {
+      if (active) setEmail(session?.user.email ?? "");
+    });
+    // Find out first whether this account is a platform operator, so a customer
+    // account gets an explanation instead of a form that cannot work.
+    request("/api/control/me", MutationResponseSchema)
+      .then(() => {
+        if (!active) return;
+        setAccess("granted");
+        request("/api/control/organizations", ControlOrganizationListSchema)
+          .then((rows) => active && setOrganizations(rows))
+          .catch((e) => active && setMessage(e.message));
+        request("/api/control/templates", TemplateListSchema)
+          .then((rows) => active && setTemplates(rows))
+          .catch((e) => active && setMessage(`The industry templates could not be loaded: ${e.message}`));
+      })
+      .catch((e) => {
+        if (!active) return;
+        setAccess("denied");
+        setMessage(e instanceof Error ? e.message : "Access could not be checked.");
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const byId = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
@@ -306,9 +331,50 @@ export function OperatorConsoleRoute() {
     }
   }
 
+  if (access !== "granted") {
+    return (
+      <main className="saas-console">
+        <p className="eyebrow">PLATFORM SETUP</p>
+        <h1>{access === "checking" ? "Checking your access…" : "This account is not a platform operator"}</h1>
+        {access === "denied" && (
+          <>
+            <p>
+              {email ? <>You are signed in as <strong>{email}</strong>. </> : null}
+              Only platform operator accounts can create organizations. A customer account (an owner or a member) works in its own workspace instead.
+            </p>
+            <p className="muted">{message}</p>
+            <div className="csv-actions">
+              <a href="/">
+                <button type="button">Open my workspace</button>
+              </a>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void signOut().then(() => window.location.assign("/login"))}
+              >
+                Sign out and use another account
+              </button>
+            </div>
+          </>
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="saas-console">
       <a href="/">← Customer workspace</a>
+      <p className="muted" style={{ margin: "6px 0 0" }}>
+        Signed in as <strong>{email || "…"}</strong> ·{" "}
+        <button
+          type="button"
+          className="secondary"
+          style={{ padding: "2px 8px", fontSize: 12 }}
+          onClick={() => void signOut().then(() => window.location.assign("/login"))}
+        >
+          Sign out
+        </button>
+      </p>
       <p className="eyebrow">PLATFORM SETUP</p>
       <h1>Create an organization</h1>
       <p>

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  MutationResponseSchema,
   ResultSchema,
   type SaasResult,
   SettingsSchema,
@@ -97,9 +98,17 @@ export function SaasRoute() {
     let active = true;
     request("/api/saas/organizations", TenantListSchema)
       .then((rows) => {
-        if (active) {
-          setOrganizations(rows);
-          selectTenant(rows[0]?.id ?? "");
+        if (!active) return;
+        setOrganizations(rows);
+        selectTenant(rows[0]?.id ?? "");
+        if (rows.length === 0) {
+          // A platform operator belongs to no organization. Send them to the
+          // console instead of an empty customer dashboard.
+          request("/api/control/me", MutationResponseSchema)
+            .then(() => {
+              if (active) window.location.replace("/operator");
+            })
+            .catch(() => undefined);
         }
       })
       .catch((e) => {
