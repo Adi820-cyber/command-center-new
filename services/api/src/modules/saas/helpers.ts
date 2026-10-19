@@ -6,11 +6,14 @@ import type { Database, Tx } from "../../db/client.ts";
 import { verifyAccessToken, type AuthOptions } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import type { ModelProvider } from "../ask/narrator.ts";
+import type { AuthAdmin } from "./auth-admin.ts";
 
 export interface SaasOptions {
   auth: AuthOptions;
   database?: Database;
   controlDatabase?: Database;
+  /** Creates logins for the people an operator adds. Present only on the control API. */
+  authAdmin?: AuthAdmin;
   /** Models that may reword an Ask answer. Empty keeps Ask fully deterministic. */
   askProviders?: readonly ModelProvider[];
 }

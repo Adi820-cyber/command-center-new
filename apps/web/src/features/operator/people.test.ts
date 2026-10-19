@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invitationCsv, matchRole, parsePeople } from "./people.ts";
+import { accessCsv, accessMessage, invitationCsv, matchRole, parsePeople } from "./people.ts";
 
 const roles = [
   { key: "executive", name: "Executive (CEO / Owner view)" },
@@ -66,5 +66,28 @@ describe("invitation links file", () => {
   it("lists each person with their link", () => {
     const csv = invitationCsv([{ email: "a@acme.com", roleKeys: ["executive", "operations"], token: "abc" }], "https://app.example");
     expect(csv).toBe("email,roles,invitation_link\r\na@acme.com,executive; operations,https://app.example/invite#abc\r\n");
+  });
+
+  describe("access hand-over", () => {
+    const withPassword = { email: "a@acme.com", roleKeys: ["executive"], temporaryPassword: "Ab3d-Efg4-Hjk5" };
+    const withLink = { email: "b@acme.com", roleKeys: ["operations", "data_reviewer"], token: "tok123" };
+
+    it("writes a message a person can act on", () => {
+      const text = accessMessage(withPassword, "https://app.example");
+      expect(text).toContain("https://app.example/login");
+      expect(text).toContain("a@acme.com");
+      expect(text).toContain("Ab3d-Efg4-Hjk5");
+      expect(text).toMatch(/choose your own password/);
+      const invite = accessMessage(withLink, "https://app.example");
+      expect(invite).toContain("https://app.example/invite#tok123");
+      expect(invite).not.toMatch(/password/i);
+    });
+
+    it("puts everyone in one CSV with the right column filled", () => {
+      const csv = accessCsv([withPassword, withLink], "https://app.example").split("\r\n");
+      expect(csv[0]).toBe("email,roles,sign_in_address,temporary_password,invitation_link");
+      expect(csv[1]).toBe("a@acme.com,executive,https://app.example/login,Ab3d-Efg4-Hjk5,");
+      expect(csv[2]).toBe('b@acme.com,operations; data_reviewer,https://app.example/login,,https://app.example/invite#tok123');
+    });
   });
 });

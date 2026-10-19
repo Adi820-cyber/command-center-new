@@ -3,6 +3,7 @@ import { createRemoteJWKSet } from 'jose';
 import { buildApp } from './build.ts';
 import { loadConfig } from './config.ts';
 import { createDatabase } from './db/client.ts';
+import { createAuthAdmin } from './modules/saas/auth-admin.ts';
 
 // Vercel entrypoint (src/app.ts). The app is built in ./build.ts. Vercel's
 // Fastify detection needs this file itself to import fastify.
@@ -15,6 +16,9 @@ buildApp({
   database: config.kpiDatabaseUrl ? createDatabase({ url: config.kpiDatabaseUrl }) : undefined,
   controlDatabase: config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined,
   askProviders: config.askProviders,
+  authAdmin: config.supabaseSecretKey
+    ? createAuthAdmin({ supabaseUrl: config.supabaseUrl, secretKey: config.supabaseSecretKey })
+    : undefined,
   allowedOrigins: config.allowedOrigins,
   auth: {
     getKey: createRemoteJWKSet(config.jwksUrl),

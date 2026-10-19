@@ -173,5 +173,67 @@ begin
   exception when insufficient_privilege then res := res || 'customer_writes_catalog=blocked;'; end;
   reset role;
 
+  -- 8b. no function is open to everyone; internal ones cannot be called by the API roles
+  select count(*) into n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+   where s.nspname in ('kpi','kpi_control','kpi_catalog') and has_function_privilege('public', p.oid, 'execute');
+  res := res || 'functions_open_to_public=' || (case when n = 0 then 'none' else n || '(BUG)' end) || ';';
+  res := res || 'customer_role_can_apply_template=' || (case when has_function_privilege('kpi_app', 'kpi.apply_template(uuid,text,uuid)', 'execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+  res := res || 'control_role_can_call_add_people=' || (case when has_function_privilege('kpi_control_app', 'kpi_control.add_people(uuid,jsonb)', 'execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+  res := res || 'control_role_can_call_add_invitations=' || (case when has_function_privilege('kpi_control_app', 'kpi_control.add_invitations(uuid,jsonb)', 'execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+  res := res || 'customer_role_keeps_its_functions=' || (has_function_privilege('kpi_app', 'kpi.approve_batch(uuid,uuid)', 'execute') and has_function_privilege('kpi_app', 'kpi.set_target(uuid,uuid,numeric)', 'execute') and has_function_privilege('kpi_control_app', 'kpi_control.provision_with_people(text,text,jsonb)', 'execute')) || ';';
+
+  -- 9. people created with logins (the control API supplies the user ids) ----------
+  declare
+    u1 uuid := gen_random_uuid(); u2 uuid := gen_random_uuid(); u3 uuid := gen_random_uuid(); t3 uuid; cnt int; rcount int;
+  begin
+   set local role kpi_control_app;
+   perform set_config('kpi.subject', A::text, true);
+   t3 := kpi_control.provision_with_people('Logins Co', 'diagnostics-lab', jsonb_build_array(
+     jsonb_build_object('email','owner@logins.test','owner',true,'roleKeys','[]'::jsonb,'subject',u1),
+     jsonb_build_object('email','ceo@logins.test','roleKeys','["executive"]'::jsonb,'subject',u2)));
+   res := res || 'login_org_created=' || (t3 is not null) || ';';
+   begin perform kpi_control.provision_with_people('No Owner', 'diagnostics-lab', jsonb_build_array(jsonb_build_object('email','a@x.test','roleKeys','["executive"]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'no_owner=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'no_owner=blocked;'; end;
+   begin perform kpi_control.provision_with_people('Two Owners', 'diagnostics-lab', jsonb_build_array(
+       jsonb_build_object('email','a@x.test','owner',true,'subject',gen_random_uuid()),
+       jsonb_build_object('email','b@x.test','owner',true,'subject',gen_random_uuid())));
+     res := res || 'two_owners=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'two_owners=blocked;'; end;
+   begin perform kpi_control.provision_with_people('No Template', null, jsonb_build_array(
+       jsonb_build_object('email','a@x.test','owner',true,'subject',gen_random_uuid()),
+       jsonb_build_object('email','b@x.test','roleKeys','["executive"]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'members_without_template=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'members_without_template=blocked;'; end;
+   begin perform kpi_control.provision_with_people('Op Member', 'diagnostics-lab', jsonb_build_array(
+       jsonb_build_object('email','a@x.test','owner',true,'subject',gen_random_uuid()),
+       jsonb_build_object('email','op@x.test','roleKeys','["executive"]'::jsonb,'subject',A)));
+     res := res || 'operator_as_member=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'operator_as_member=blocked;'; end;
+   begin perform kpi_control.add_people_to(t3, jsonb_build_array(jsonb_build_object('email','ceo@logins.test','roleKeys','["executive"]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'same_email_twice=ALLOWED(BUG);'; exception when sqlstate '23505' then res := res || 'same_email_twice=blocked;'; end;
+   begin perform kpi_control.add_people_to(t3, jsonb_build_array(jsonb_build_object('email','OWNER@logins.test','roleKeys','["executive"]'::jsonb,'tokenHash',hash_a)));
+     res := res || 'existing_member_by_invitation=ALLOWED(BUG);'; exception when sqlstate '23505' then res := res || 'existing_member_by_invitation=blocked;'; end;
+   begin perform kpi_control.add_people_to(t3, jsonb_build_array(jsonb_build_object('email','x@logins.test','owner',true,'subject',gen_random_uuid())));
+     res := res || 'second_owner_later=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'second_owner_later=blocked;'; end;
+   begin perform kpi_control.add_people_to(t3, jsonb_build_array(jsonb_build_object('email','y@logins.test','roleKeys','["janitor"]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'unknown_role=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'unknown_role=blocked;'; end;
+   begin perform kpi_control.add_people(t3, '[]'::jsonb);
+     res := res || 'internal_function_callable=ALLOWED(BUG);'; exception when insufficient_privilege then res := res || 'internal_function_callable=blocked;'; end;
+   perform kpi_control.add_people_to(t3, jsonb_build_array(jsonb_build_object('email','later@logins.test','roleKeys','["executive"]'::jsonb,'subject',u3)));
+   res := res || 'added_later=true;';
+   reset role;
+
+   -- the people really are members, with only their role's view; the operator is not
+   select count(*) into rcount from kpi.definitions where tenant_id = t3 and state = 'active';
+   set local role kpi_app;
+   perform set_config('kpi.subject', u2::text, true);
+   select count(*) into cnt from kpi.definitions where tenant_id = t3;
+   res := res || 'login_ceo_sees_kpis=' || (cnt > 0 and cnt < rcount) || ';';
+   perform set_config('kpi.subject', u1::text, true);
+   select count(*) into cnt from kpi.definitions where tenant_id = t3;
+   res := res || 'login_owner_sees_all=' || (cnt = rcount) || ';';
+   perform set_config('kpi.subject', A::text, true);
+   select count(*) into cnt from kpi.organizations where id = t3;
+   res := res || 'operator_sees_login_org=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
+   reset role;
+  end;
+
   raise exception 'SMOKE_RESULT %', res;
 end $$;

@@ -6,6 +6,7 @@ import type { ModuleDeps } from "./modules/ports.ts";
 import type { ApiSurface } from "./surface.ts";
 import type { Database } from "./db/client.ts";
 import type { ModelProvider } from "./modules/ask/narrator.ts";
+import type { AuthAdmin } from "./modules/saas/auth-admin.ts";
 import { registerSaasRoutes } from "./modules/saas/routes.ts";
 
 export interface AppOptions {
@@ -13,6 +14,8 @@ export interface AppOptions {
   allowedOrigins: readonly string[];
   database?: Database;
   controlDatabase?: Database;
+  /** Creates logins for people an operator adds (control API only). */
+  authAdmin?: AuthAdmin;
   /** Models that may reword an Ask answer. Leave empty to keep Ask fully deterministic. */
   askProviders?: readonly ModelProvider[];
   logger?: boolean;

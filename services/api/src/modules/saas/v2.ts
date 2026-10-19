@@ -16,6 +16,7 @@ import { narrate } from "../ask/narrator.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import { answerQuestion } from "./ask.ts";
 import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
+import { assertDistinct, prepareLogins } from "./logins.ts";
 import { loadWorkspace } from "./workspace.ts";
 
 const CATALOG_ID = z.string().regex(/^[A-Z]{2,4}-\d{3}$/);
@@ -27,12 +28,7 @@ interface Invitee {
 }
 /** One fresh token per invitee. Only the hash is stored; the token goes back to the operator once. */
 function withTokens(members: readonly Invitee[]) {
-  const seen = new Set<string>();
-  for (const member of members) {
-    const key = member.email.trim().toLowerCase();
-    if (seen.has(key)) throw new ApiError("invalid_request", `${member.email} is listed more than once.`);
-    seen.add(key);
-  }
+  assertDistinct(members);
   return members.map((member) => ({ ...member, token: newToken() }));
 }
 const invitationJson = (members: ReturnType<typeof withTokens>) =>
@@ -130,12 +126,43 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
   );
 
   // Creates an organisation: its owner, and optionally a template with members and roles.
+  //
+  // With the Supabase secret key configured (control API), every person gets a
+  // login with a temporary password and is a member straight away. Without it,
+  // each person gets a one-time invitation link instead.
   app.post("/api/control/organizations", async (req) => {
     const body = input(ProvisionRequestSchema, req.body);
     if (!body.templateId && body.members.length)
       throw new ApiError("invalid_request", "Choose a template to give members their roles.");
     if (body.members.some((m) => m.email.trim().toLowerCase() === body.ownerEmail.trim().toLowerCase()))
-      throw new ApiError("invalid_request", "The owner is already invited; leave them out of the member list.");
+      throw new ApiError("invalid_request", "The owner is already listed; leave them out of the member list.");
+
+    if (options.authAdmin) {
+      const prepared = await prepareLogins(
+        [{ email: body.ownerEmail, roleKeys: [], owner: true }, ...body.members],
+        options.authAdmin,
+      );
+      try {
+        const id = await control(req, async (tx) => {
+          const [row] = await tx.query("select kpi_control.provision_with_people($1,$2,$3::text::jsonb) as id", [
+            body.name,
+            body.templateId ?? null,
+            prepared.json,
+          ]);
+          return row?.id;
+        });
+        return ProvisionResponseSchema.parse({
+          id,
+          mode: "logins",
+          owner: prepared.people[0],
+          members: prepared.people.slice(1),
+        });
+      } catch (error) {
+        await prepared.undo();
+        throw error;
+      }
+    }
+
     const members = withTokens(body.members);
     const ownerToken = newToken();
     return control(req, async (tx) => {
@@ -150,20 +177,36 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
         : await tx.query("select kpi_control.provision($1,$2,$3) as id", [body.name, body.ownerEmail, hash(ownerToken)]);
       return ProvisionResponseSchema.parse({
         id: row?.id,
-        token: ownerToken,
+        mode: "invitations",
+        owner: { email: body.ownerEmail, roleKeys: [], token: ownerToken },
         members: members.map((m) => ({ email: m.email, roleKeys: m.roleKeys, token: m.token })),
       });
     });
   });
 
-  // Adds more members, with roles, to an organisation the operator created.
+  // Adds more people, with roles, to an organisation the operator created.
   app.post("/api/control/organizations/:tenantId/members", async (req) => {
     const { tenantId } = input(z.object({ tenantId: uuid }), req.params);
     const body = input(InviteMembersRequestSchema, req.body);
+
+    if (options.authAdmin) {
+      const prepared = await prepareLogins(body.members, options.authAdmin);
+      try {
+        await control(req, async (tx) => {
+          await tx.query("select kpi_control.add_people_to($1::uuid,$2::text::jsonb)", [tenantId, prepared.json]);
+        });
+        return InviteMembersResponseSchema.parse({ mode: "logins", members: prepared.people });
+      } catch (error) {
+        await prepared.undo();
+        throw error;
+      }
+    }
+
     const members = withTokens(body.members);
     return control(req, async (tx) => {
       await tx.query("select kpi_control.invite_members($1::uuid,$2::text::jsonb)", [tenantId, invitationJson(members)]);
       return InviteMembersResponseSchema.parse({
+        mode: "invitations",
         members: members.map((m) => ({ email: m.email, roleKeys: m.roleKeys, token: m.token })),
       });
     });

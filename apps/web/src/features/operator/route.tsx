@@ -9,15 +9,16 @@ import {
 } from "@orbit/contracts";
 import { getCurrentSession, signOut } from "../../lib/auth";
 import { mutate, request } from "../saas/client";
-import { invitationCsv, parsePeople, type Person, type RoleOption } from "./people";
+import { accessCsv, accessMessage, parsePeople, type PersonAccess, type Person, type RoleOption } from "./people";
 import "../saas/saas.css";
 import "../saas/v2.css";
 
 type Organizations = ReturnType<typeof ControlOrganizationListSchema.parse>;
-interface Issued {
-  email: string;
-  roleKeys: string[];
-  token: string;
+type Issued = PersonAccess;
+interface IssuedSet {
+  title: string;
+  mode: "logins" | "invitations";
+  people: Issued[];
 }
 
 const onSubmitAsync =
@@ -25,7 +26,6 @@ const onSubmitAsync =
   (event: FormEvent<HTMLFormElement>) => {
     void fn(event);
   };
-const link = (token: string) => `${window.location.origin}/invite#${token}`;
 
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
@@ -148,10 +148,10 @@ function PeopleEditor({
   );
 }
 
-/** Invitation links, shown once, with copy and download. */
-function Links({ owner, members, title }: { owner?: string; members: Issued[]; title: string }) {
+/** Each person's access, shown once, with copy and download. */
+function AccessPanel({ set }: { set: IssuedSet }) {
   const [copied, setCopied] = useState("");
-  const all = [...(owner ? [{ email: "Organization owner", roleKeys: ["owner"], token: owner }] : []), ...members];
+  const origin = window.location.origin;
   async function copy(text: string, id: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -161,33 +161,51 @@ function Links({ owner, members, title }: { owner?: string; members: Issued[]; t
       setCopied("");
     }
   }
+  const logins = set.people.filter((p) => p.temporaryPassword).length;
+  const links = set.people.length - logins;
   return (
     <section>
-      <h2>{title}</h2>
+      <h2>{set.title}</h2>
       <p className="warn">
-        These links are shown only now. Send each one privately to its person.
-        Each works once, for the matching email, and expires in seven days.
+        {logins > 0 && (
+          <>
+            These temporary passwords are shown <strong>only now</strong>. Send each person their own details privately.
+            They are asked to choose a new password the first time they sign in.{" "}
+          </>
+        )}
+        {links > 0 && (
+          <>
+            {logins > 0 ? "People who already had an account " : "Each link "}
+            {logins > 0 ? "get a one-time invitation link instead: they sign in with their existing password, then open it. " : "works once, for the matching email, and expires in seven days. "}
+          </>
+        )}
       </p>
       <table className="console-links">
         <thead>
           <tr>
             <th>Person</th>
             <th>Roles</th>
-            <th>Invitation link</th>
+            <th>{logins > 0 && links === 0 ? "Temporary password" : "Password or link"}</th>
             <th><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {all.map((m) => (
-            <tr key={m.token}>
-              <td>{m.email}</td>
-              <td>{m.roleKeys.join(", ")}</td>
+          {set.people.map((p) => (
+            <tr key={p.email}>
+              <td>{p.email}</td>
+              <td>{p.roleKeys.length ? p.roleKeys.join(", ") : "owner"}</td>
               <td>
-                <input readOnly value={link(m.token)} onFocus={(e) => e.target.select()} aria-label={`Invitation for ${m.email}`} />
+                <input
+                  readOnly
+                  value={p.temporaryPassword ?? `${origin}/invite#${p.token ?? ""}`}
+                  onFocus={(e) => e.target.select()}
+                  aria-label={`${p.temporaryPassword ? "Temporary password" : "Invitation"} for ${p.email}`}
+                  style={p.temporaryPassword ? { fontFamily: "ui-monospace, monospace" } : undefined}
+                />
               </td>
               <td>
-                <button type="button" className="secondary" onClick={() => void copy(link(m.token), m.token)}>
-                  {copied === m.token ? "Copied" : "Copy"}
+                <button type="button" className="secondary" onClick={() => void copy(accessMessage(p, origin), p.email)}>
+                  {copied === p.email ? "Copied" : "Copy message"}
                 </button>
               </td>
             </tr>
@@ -195,20 +213,8 @@ function Links({ owner, members, title }: { owner?: string; members: Issued[]; t
         </tbody>
       </table>
       <div style={{ display: "flex", gap: 10 }}>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            download(
-              "invitation-links.csv",
-              invitationCsv(
-                all.map((m) => ({ ...m, email: m.email })),
-                window.location.origin,
-              ),
-            )
-          }
-        >
-          Download all links (CSV)
+        <button type="button" className="secondary" onClick={() => download("people-access.csv", accessCsv(set.people, origin))}>
+          Download all (CSV)
         </button>
       </div>
     </section>
@@ -226,7 +232,7 @@ export function OperatorConsoleRoute() {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [people, setPeople] = useState<Person[]>([]);
-  const [issued, setIssued] = useState<{ title: string; owner?: string; members: Issued[] }>();
+  const [issued, setIssued] = useState<IssuedSet>();
   const [addTo, setAddTo] = useState("");
   const [morePeople, setMorePeople] = useState<Person[]>([]);
 
@@ -293,7 +299,7 @@ export function OperatorConsoleRoute() {
         ...(templateId ? { templateId } : {}),
         members: people.map((p) => ({ email: p.email.trim(), roleKeys: p.roleKeys })),
       });
-      setIssued({ title: "Organization created", owner: result.token, members: result.members });
+      setIssued({ title: "Organization created", mode: result.mode, people: [result.owner, ...result.members] });
       setMessage(
         template
           ? `Created from “${template.name}”: ${template.kpiCount} KPIs and ${template.roles.length} roles are ready.`
@@ -320,8 +326,12 @@ export function OperatorConsoleRoute() {
       const result = await request(`/api/control/organizations/${tenantId}/members`, InviteMembersResponseSchema, {
         members: morePeople.map((p) => ({ email: p.email.trim(), roleKeys: p.roleKeys })),
       });
-      setIssued({ title: "People invited", members: result.members });
-      setMessage(`${result.members.length} invitation${result.members.length === 1 ? "" : "s"} created.`);
+      setIssued({ title: result.mode === "logins" ? "People added" : "People invited", mode: result.mode, people: result.members });
+      setMessage(
+        result.mode === "logins"
+          ? `${result.members.length} ${result.members.length === 1 ? "person" : "people"} added with a login.`
+          : `${result.members.length} invitation${result.members.length === 1 ? "" : "s"} created.`,
+      );
       setMorePeople([]);
       setAddTo("");
     } catch (e) {
@@ -456,7 +466,7 @@ export function OperatorConsoleRoute() {
         </div>
       </form>
       {message && <output className="saas-message">{message}</output>}
-      {issued && <Links title={issued.title} owner={issued.owner} members={issued.members} />}
+      {issued && <AccessPanel set={issued} />}
 
       <section>
         <h2>Organizations</h2>

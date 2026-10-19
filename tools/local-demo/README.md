@@ -2,7 +2,7 @@
 
 Runs the whole platform on one computer with no Supabase account: a throwaway Postgres, a stand-in login server, the two APIs and the web app. It exists so the multi-tenant flow can be tested end to end, and so anyone can click through the product without credentials.
 
-**Local only.** The stand-in login accepts any email and any password. It listens on 127.0.0.1. Never deploy it, never point it at real data.
+**Local only.** The stand-in login accepts any email and any password, with one exception: an account created through its admin call (as the control API does for a new person) needs the password it was created with and carries the "must change password" flag, like the real thing. Those accounts are kept in `users.json`, which is not committed. It listens on 127.0.0.1. Never deploy it, never point it at real data.
 
 ## What you need
 
@@ -44,13 +44,13 @@ Runs the whole platform on one computer with no Supabase account: a throwaway Po
 
 3. **Login stand-in:** `node tools/local-demo/auth-server.mjs` (port 54321).
 
-4. **APIs** (two processes, each with only its own database credential):
+4. **APIs** (two processes, each with only its own database credential). Add `SUPABASE_SECRET_KEY=demo-secret` to the **control** process to turn on temporary logins; leave it out for invitation links:
 
    ```
    cd services/api
    SUPABASE_URL=http://127.0.0.1:54321 ALLOWED_ORIGINS=http://localhost:5174 PORT=3100 \
      KPI_DATABASE_URL=postgresql://cc_kpi_data_login:demo-data@127.0.0.1:<port>/<database> node src/app.ts
-   SUPABASE_URL=http://127.0.0.1:54321 ALLOWED_ORIGINS=http://localhost:5174 PORT=3101 \
+   SUPABASE_URL=http://127.0.0.1:54321 ALLOWED_ORIGINS=http://localhost:5174 PORT=3101 SUPABASE_SECRET_KEY=demo-secret \
      CONTROL_DATABASE_URL=postgresql://cc_kpi_control_login:demo-control@127.0.0.1:<port>/<database> node src/app.ts
    ```
 
@@ -67,5 +67,7 @@ Runs the whole platform on one computer with no Supabase account: a throwaway Po
 ## The end-to-end suite
 
 `node tools/local-demo/e2e.mjs` provisions an organization from a template with members and roles, accepts the invitations, uploads data, approves it, and checks roll-up to parent units, period comparisons, role-limited visibility, Ask, the catalog, targets and the operator's limits. It prints PASS or FAIL for each check and exits non-zero on any failure. It creates a new organization each time, so it can be run repeatedly.
+
+`node tools/local-demo/e2e-logins.mjs` does the same for temporary logins and needs the control API started with the key: each new person gets their own password, signs in with it, sees only their role's KPIs, can be added later, and a failed step leaves no stray logins. Run `e2e.mjs` against a control API **without** the key, since it exercises invitation links.
 
 The same database rules are also checked, inside a transaction that is rolled back, by `database/tests/v2-smoke.sql`.

@@ -122,4 +122,16 @@ describe('ask narration providers', () => {
     expect(config.askProviders).toEqual([]);
     expect(config.jwksUrl.href).toBe('https://fixture-project.supabase.co/auth/v1/.well-known/jwks.json');
   });
+
+  it("allows the secret key on the control API only", () => {
+    const control = loadConfig({ ...base, CONTROL_DATABASE_URL: 'postgresql://x', SUPABASE_SECRET_KEY: 'sb_secret_x' });
+    expect(control.supabaseSecretKey).toBe('sb_secret_x');
+    expect(control.supabaseUrl).toBe('https://fixture-project.supabase.co');
+    expect(loadConfig({ ...base, CONTROL_DATABASE_URL: 'postgresql://x' }).supabaseSecretKey).toBeUndefined();
+    expect(loadConfig({ ...base, SUPABASE_SECRET_KEY: '' }).supabaseSecretKey).toBeUndefined();
+  });
+
+  it("refuses the secret key next to the customer database credential", () => {
+    expect(() => loadConfig({ ...base, KPI_DATABASE_URL: 'postgresql://x', SUPABASE_SECRET_KEY: 'sb_secret_x' })).toThrow(/control API/);
+  });
 });

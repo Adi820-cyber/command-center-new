@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   DATABASE_URL: optional(z.string().min(1)),
   KPI_DATABASE_URL: optional(z.string().min(1)),
   CONTROL_DATABASE_URL: optional(z.string().min(1)),
+  /** Supabase secret key. Control API only: it lets the operator create logins for the people they add. */
+  SUPABASE_SECRET_KEY: optional(z.string().min(1)),
   ALLOWED_ORIGINS: z.string().default(''),
   ORBIT_LIVE_SOURCES: z.string().default(''),
   /** Which half of Orbit this deployment serves (src/surface.ts). Default `all`. */
@@ -49,6 +51,9 @@ export interface ApiConfig {
   databaseUrl: string | undefined;
   kpiDatabaseUrl: string | undefined;
   controlDatabaseUrl: string | undefined;
+  /** Present only on the control API. Absent means people are added by invitation link. */
+  supabaseSecretKey: string | undefined;
+  supabaseUrl: string;
   allowedOrigins: readonly string[];
   /** Sources switched from fail-closed to real by `ORBIT_LIVE_SOURCES`. Empty by default. */
   liveSources: ReadonlySet<LiveSource>;
@@ -116,6 +121,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   if (vars.KPI_DATABASE_URL && vars.CONTROL_DATABASE_URL) {
     throw new Error('Deploy the customer API and control API separately; configure only one database credential in each process.');
   }
+  if (vars.SUPABASE_SECRET_KEY && vars.KPI_DATABASE_URL) {
+    // The customer API reads customer data. It must never hold a key that can create or alter logins.
+    throw new Error('SUPABASE_SECRET_KEY belongs only on the control API, not on a process with KPI_DATABASE_URL.');
+  }
   const base = vars.SUPABASE_URL.replace(/\/+$/, '');
 
   const liveSources = parseLiveSources(vars.ORBIT_LIVE_SOURCES);
@@ -126,6 +135,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return {
     kpiDatabaseUrl: vars.KPI_DATABASE_URL,
     controlDatabaseUrl: vars.CONTROL_DATABASE_URL,
+    supabaseSecretKey: vars.SUPABASE_SECRET_KEY,
+    supabaseUrl: base,
     issuer: `${base}/auth/v1`,
     audience: 'authenticated',
     jwksUrl: new URL(vars.SUPABASE_JWKS_URL ?? `${base}/auth/v1/.well-known/jwks.json`),

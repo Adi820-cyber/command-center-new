@@ -73,17 +73,22 @@ export const ProvisionRequestSchema = z.strictObject({
   members: z.array(ProvisionMemberSchema).max(500).default([]),
 });
 export type ProvisionRequest = z.infer<typeof ProvisionRequestSchema>;
+/** One person the operator added. Exactly one of the two secrets is present. */
+export const ProvisionedPersonSchema = z.strictObject({
+  email: z.string(),
+  roleKeys: z.array(z.string()),
+  /** The login was created for them; they must change this at first sign-in. Shown once. */
+  temporaryPassword: z.string().optional(),
+  /** They already had an account, so they open this one-time link instead. */
+  token: z.string().optional(),
+});
 export const ProvisionResponseSchema = z.strictObject({
   id: z.uuid(),
-  /** One-time token for the owner's invitation link. */
-  token: z.string(),
-  members: z.array(
-    z.strictObject({
-      email: z.string(),
-      roleKeys: z.array(z.string()),
-      token: z.string(),
-    }),
-  ),
+  /** `logins`: people have a temporary password. `invitations`: people open a link. */
+  mode: z.enum(["logins", "invitations"]),
+  /** The owner. In `invitations` mode this is the owner's link. */
+  owner: ProvisionedPersonSchema,
+  members: z.array(ProvisionedPersonSchema),
 });
 export type ProvisionResponse = z.infer<typeof ProvisionResponseSchema>;
 
@@ -91,6 +96,7 @@ export const InviteMembersRequestSchema = z.strictObject({
   members: z.array(ProvisionMemberSchema).min(1).max(500),
 });
 export const InviteMembersResponseSchema = z.strictObject({
+  mode: ProvisionResponseSchema.shape.mode,
   members: ProvisionResponseSchema.shape.members,
 });
 

@@ -19,7 +19,7 @@ import {
   WorkspaceSchema,
   type SaasWorkspace,
 } from "@orbit/contracts";
-import { getAuthClient, signOut } from "../../lib/auth";
+import { getAuthClient, getCurrentSession, signOut } from "../../lib/auth";
 import { mutate, request } from "./client";
 import { AskPanel } from "./ask-panel";
 import { CatalogBrowser } from "./catalog-browser";
@@ -96,6 +96,10 @@ export function SaasRoute() {
   }, []);
   useEffect(() => {
     let active = true;
+    // A temporary password must be replaced before anything else happens.
+    void getCurrentSession().then((session) => {
+      if (active && session?.user.user_metadata?.must_change_password === true) window.location.replace("/change-password");
+    });
     request("/api/saas/organizations", TenantListSchema)
       .then((rows) => {
         if (!active) return;

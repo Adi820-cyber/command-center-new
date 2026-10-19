@@ -81,6 +81,7 @@ Use separate API services built from `services/api`:
 - Set the same verified Supabase Auth project values and its exact allowed web origin.
 - Set `CONTROL_DATABASE_URL` to the `cc_kpi_control_login` connection only.
 - Leave `KPI_DATABASE_URL` empty.
+- Optionally set `SUPABASE_SECRET_KEY` (Dashboard → Project Settings → API Keys → secret key) to let operators give people a login with a temporary password; see section 6a. Without it, people are added by invitation link. **Only this process may hold it.** The API refuses to start if it is set next to `KPI_DATABASE_URL`. Store it as a sensitive variable, never in a `VITE_*` variable, never in Git.
 - Set `VITE_CONTROL_API_BASE_URL` in the web build to this service's HTTPS origin.
 
 The backend refuses to start if both database credentials are set in one process. The frontend receives only the Supabase URL and publishable key; database passwords and Supabase service-role secrets never go into `VITE_*` variables. Transaction pooling uses port 6543 where available, TLS, and disabled prepared statements in the existing Postgres client.
@@ -100,7 +101,18 @@ In the control console (`/operator`):
 1. Enter the organization name and the owner's email.
 2. Choose an industry template. It brings the KPIs, the roles and what each role can see.
 3. Add people: type them row by row, or paste a list, one person per line: `anita@acme.com, operations; data reviewer`. Roles may be written as the key or the name. Any number of people can be added now, or later with **Add people**.
-4. Press **Create organization**. The page shows one invitation link per person, once. Send each link privately; each works once, for the matching email, and expires in seven days. **Download all links (CSV)** saves them.
+4. Press **Create organization**. What happens next depends on whether the control API has `SUPABASE_SECRET_KEY`:
+
+   - **With the key (temporary logins).** The control API creates a login in Supabase Auth for the owner and every person, each with its own random temporary password, and makes them members with their roles at once. The page lists each email with its temporary password, once. **Copy message** gives a ready-to-send note (sign-in address, email, password); **Download all (CSV)** saves everything. Nobody has to accept an invitation. The first time someone signs in they are taken to a page to choose their own password before they see anything else. Until they do, the temporary password is the only way in.
+   - **Without the key (invitation links).** The page lists one invitation link per person, once. Each works once, for the matching email, and expires in seven days.
+
+   Either way, someone who already has an account cannot be given a new password silently, so they get an invitation link instead and the console says so. The same email cannot be added to an organization twice.
+
+   If creating any one login fails, the ones already made are removed and nothing is saved.
+
+**What the secret key can do, and why it is only on the control API.** It can create, change and delete any login in the project, which is far more than this feature needs. That is why the customer API (which reads customer data) must never have it, and why the configuration enforces that. It is a deliberate widening of what the control API can do: with the key, a compromise of the control API could alter logins, though it still has no read access to customer figures. If that is not acceptable for a customer, leave the key out and use invitation links. Rotate the key in Supabase if it is ever exposed.
+
+**Temporary passwords are only as private as the way you send them.** Send each person their own details, not a list. The `must change password` flag is a prompt in the web app, not a server-side lock: it is stored in the user's own metadata, so a technical user could skip it. Treat the temporary password as a short-lived secret and ask people to sign in soon.
 
 The console creates the organization, its roles and the invitations through database functions that return only ids. It cannot read the organization's figures.
 
