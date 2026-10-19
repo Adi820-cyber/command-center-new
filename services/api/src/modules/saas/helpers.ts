@@ -94,11 +94,20 @@ export async function inSubject<T>(
         "forbidden",
         "This operation is not permitted. Check approval and membership rules.",
       );
+    const message = e instanceof Error ? e.message : "";
+    const constraint =
+      typeof e === "object" && e !== null && "constraint_name" in e ? String(e.constraint_name) : "";
+    if (code === "23505" && constraint === "roles_tenant_id_name_key")
+      throw new ApiError("conflict", "A role with that name already exists.");
+    if (code === "23505" && /already in the organization or already invited/.test(message))
+      throw new ApiError("conflict", "That person is already in the organization or already invited.");
     if (code === "23505")
       throw new ApiError(
         "conflict",
         "This item already exists, has been decided, or its period is locked.",
       );
+    if (code === "23503" && /Role is in use/.test(message))
+      throw new ApiError("conflict", "That role is still held by someone, or offered in a pending invitation. Move them to another role first.");
     if (code === "22023")
       throw new ApiError(
         "invalid_request",

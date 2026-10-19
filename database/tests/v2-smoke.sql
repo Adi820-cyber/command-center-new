@@ -182,6 +182,34 @@ begin
   res := res || 'control_role_can_call_add_invitations=' || (case when has_function_privilege('kpi_control_app', 'kpi_control.add_invitations(uuid,jsonb)', 'execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
   res := res || 'customer_role_keeps_its_functions=' || (has_function_privilege('kpi_app', 'kpi.approve_batch(uuid,uuid)', 'execute') and has_function_privilege('kpi_app', 'kpi.set_target(uuid,uuid,numeric)', 'execute') and has_function_privilege('kpi_control_app', 'kpi_control.provision_with_people(text,text,jsonb)', 'execute')) || ';';
 
+  -- 8c. the owner runs the organization; nobody else can, and nothing crosses tenants
+  set local role kpi_app;
+  perform set_config('kpi.subject', O::text, true);
+  perform kpi.rename_organization(t, 'Renamed Co');
+  select count(*) into n from kpi.organizations where id = t and name = 'Renamed Co';
+  res := res || 'owner_renames=' || (n = 1) || ';';
+  rid := kpi.save_role(t, null, 'Smoke role', jsonb_build_array(jsonb_build_object('capability','view','unitId',null,'kpiId',k)));
+  res := res || 'owner_saves_role=' || (rid is not null) || ';';
+  perform kpi.save_role(t, rid, 'Smoke role 2', '[]'::jsonb);
+  select count(*) into n from kpi.grants where tenant_id = t and role_id = rid;
+  res := res || 'owner_replaces_grants=' || (n = 0) || ';';
+  begin perform kpi.save_role(t, rid, 'X', jsonb_build_array(jsonb_build_object('capability','view','unitId',null,'kpiId',gen_random_uuid())));
+    res := res || 'grant_to_unknown_kpi=ALLOWED(BUG);'; exception when foreign_key_violation then res := res || 'grant_to_unknown_kpi=blocked;'; end;
+  begin perform kpi.save_role(t, rid, 'X', jsonb_build_array(jsonb_build_object('capability','submit','unitId',null,'kpiId',k)));
+    res := res || 'submit_tied_to_kpi=ALLOWED(BUG);'; exception when check_violation then res := res || 'submit_tied_to_kpi=blocked;'; end;
+  perform kpi.delete_role(t, rid);
+  select count(*) into n from kpi.roles where tenant_id = t and id = rid;
+  res := res || 'owner_deletes_unused_role=' || (n = 0) || ';';
+  perform set_config('kpi.subject', C::text, true);
+  begin perform kpi.rename_organization(t, 'Hijack'); res := res || 'member_renames=ALLOWED(BUG);';
+  exception when insufficient_privilege then res := res || 'member_renames=blocked;'; end;
+  begin perform kpi.save_role(t, null, 'Hijack', '[]'::jsonb); res := res || 'member_saves_role=ALLOWED(BUG);';
+  exception when insufficient_privilege then res := res || 'member_saves_role=blocked;'; end;
+  perform set_config('kpi.subject', O2::text, true);
+  begin perform kpi.rename_organization(t, 'Other tenant'); res := res || 'other_owner_renames=ALLOWED(BUG);';
+  exception when insufficient_privilege then res := res || 'other_owner_renames=blocked;'; end;
+  reset role;
+
   -- 9. people created with logins (the control API supplies the user ids) ----------
   declare
     u1 uuid := gen_random_uuid(); u2 uuid := gen_random_uuid(); u3 uuid := gen_random_uuid(); t3 uuid; cnt int; rcount int;

@@ -33,7 +33,10 @@ export async function loadWorkspace(
     [tenant],
   );
   const members = await tx.query(
-    'select id,subject,display_name as "displayName",owner,active from kpi.memberships where tenant_id=$1 order by id',
+    `select m.id,m.subject,m.display_name as "displayName",m.owner,m.active,
+       case when kpi.is_owner(m.tenant_id) then m.email end as email,
+       coalesce((select array_agg(mr.role_id) from kpi.member_roles mr where mr.tenant_id=m.tenant_id and mr.member_id=m.id),'{}') as "roleIds"
+     from kpi.memberships m where m.tenant_id=$1 order by m.id`,
     [tenant],
   );
   const batches = await tx.query(

@@ -611,3 +611,193 @@ fieldset.csv-choices {
   min-width: 0;
   margin: 0;
 }
+
+/* ---- Owner's organization area ------------------------------------------ */
+.hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -6px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+.saas-shell .hub-tabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  padding: 10px 14px;
+  font-weight: 600;
+}
+.saas-shell .hub-tabs button.selected {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.check-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.check-list li {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.check-list li p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+.check-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #c3cfcb;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: #fff;
+}
+.check-list li.done .check-mark {
+  background: #3f9e72;
+  border-color: #3f9e72;
+}
+.role-list {
+  display: grid;
+  gap: 0;
+}
+.role-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.role-card.open {
+  border-color: var(--accent);
+}
+.role-editor {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--soft);
+}
+.role-editor label,
+.role-editor legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.role-editor fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.cap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.cap-grid legend {
+  margin-bottom: 8px;
+}
+.saas-shell .role-editor .cap-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-weight: 400;
+}
+.cap-option input {
+  width: auto;
+  margin-top: 3px;
+}
+.cap-option strong {
+  display: block;
+  font-size: 13px;
+}
+.cap-option small {
+  display: block;
+  font-weight: 400;
+}
+.kpi-groups {
+  display: grid;
+  gap: 12px;
+  max-height: 380px;
+  overflow: auto;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+.kpi-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 14px;
+}
+.saas-shell .role-editor .kpi-group-title {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink);
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+.saas-shell .role-editor .kpi-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--ink);
+  font-weight: 400;
+  font-size: 13px;
+}
+.kpi-group-title input,
+.kpi-item input,
+.console-roles input {
+  width: auto;
+}
+.saas-shell .console-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.saas-shell .console-roles label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.saas-shell .warn {
+  background: #fff6e0;
+  border: 1px solid #ecd7a0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin: 0;
+}
+.unit-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.unit-tree li {
+  border-left: 2px solid var(--line);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}

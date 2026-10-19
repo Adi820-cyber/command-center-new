@@ -24,3 +24,4 @@ export * from './format.ts';
 export * from './insights.ts';
 export * from './saas.ts';
 export * from './saas-v2.ts';
+export * from './role-editor.ts';

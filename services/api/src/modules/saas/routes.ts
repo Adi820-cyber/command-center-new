@@ -26,6 +26,7 @@ import { recalculateAfterApproval } from "./calculation.ts";
 import { audit, hash, input, inSubject, makeRunners, owner, permit, uuid, type SaasOptions } from "./helpers.ts";
 import { loadWorkspace } from "./workspace.ts";
 import { registerV2Routes } from "./v2.ts";
+import { registerOwnerRoutes } from "./owner.ts";
 
 export type { SaasOptions } from "./helpers.ts";
 
@@ -572,4 +573,5 @@ export async function registerSaasRoutes(
     }, "kpi_control_app"),
   );
   await registerV2Routes(app, options);
+  await registerOwnerRoutes(app, options);
 }

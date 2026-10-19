@@ -12,7 +12,7 @@ export function TargetEditor({
   change,
 }: {
   kpi: Kpi;
-  change: (path: string, body: unknown) => Promise<void>;
+  change: (path: string, body: unknown) => Promise<boolean>;
 }) {
   const initial = plain(kpi.target);
   const [value, setValue] = useState(initial);

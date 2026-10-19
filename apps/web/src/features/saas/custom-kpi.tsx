@@ -47,7 +47,7 @@ export function CustomKpiForm({
   change,
 }: {
   workspace: SaasWorkspace;
-  change: (path: string, body: unknown) => Promise<void>;
+  change: (path: string, body: unknown) => Promise<boolean>;
 }) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");

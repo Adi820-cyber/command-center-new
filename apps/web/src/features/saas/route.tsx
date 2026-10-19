@@ -27,6 +27,7 @@ import { CsvImport } from "./csv-import";
 import { TargetEditor } from "./target-editor";
 import { CustomKpiForm } from "./custom-kpi";
 import { Dashboard } from "./dashboard";
+import { OrgHub } from "./org-hub";
 import "./v2.css";
 type Tab =
   | "Dashboard"
@@ -130,7 +131,9 @@ export function SaasRoute() {
     if (!tenant) return;
     request(`/api/saas/${tenant}/workspace`, WorkspaceSchema)
       .then((value) => {
-        if (current === generation.current) setWorkspace(value);
+        if (current !== generation.current) return;
+        setWorkspace(value);
+        if (value.organization.owner) setTab("Organization");
       })
       .catch((e) => {
         if (current === generation.current) setMessage(e.message);
@@ -139,7 +142,7 @@ export function SaasRoute() {
         if (current === generation.current) setLoading(false);
       });
   }, [tenant]);
-  async function change(path: string, body: unknown) {
+  async function change(path: string, body: unknown): Promise<boolean> {
     const current = generation.current;
     setBusy(true);
     setMessage("");
@@ -157,9 +160,11 @@ export function SaasRoute() {
             : "Saved. Your workspace is up to date.",
         );
       }
+      return true;
     } catch (e) {
       if (current === generation.current)
         setMessage(e instanceof Error ? e.message : "Unable to save.");
+      return false;
     } finally {
       if (current === generation.current) setBusy(false);
     }
@@ -288,18 +293,17 @@ export function SaasRoute() {
                   />
                 </>
               )}
-              {tab === "Organization" && (
-                <>
+              {tab === "Organization" &&
+                (workspace.organization.owner ? (
+                  <OrgHub
+                    workspace={workspace}
+                    change={change}
+                    goto={setTab}
+                    governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                  />
+                ) : (
                   <Organization workspace={workspace} change={change} />
-                  {workspace.organization.owner && (
-                    <Governance
-                      tenant={tenant}
-                      workspace={workspace}
-                      change={change}
-                    />
-                  )}
-                </>
-              )}
+                ))}
               {tab === "Actions" && (
                 <Actions workspace={workspace} change={change} />
               )}
@@ -324,13 +328,13 @@ function description(tab: Tab) {
     "KPI library":
       "Define what matters. Keep every calculation explicit and versioned.",
     Actions: "Turn an observation into an accountable next step.",
-    Organization: "Your structure, your roles, your team.",
+    Organization: "Run your organization: its details, roles and the KPIs each one sees, people and units.",
     Activity: "An auditable record of changes in your workspace.",
   }[tab];
 }
 type Props = {
   workspace: SaasWorkspace;
-  change: (path: string, body: unknown) => Promise<void>;
+  change: (path: string, body: unknown) => Promise<boolean>;
 };
 function Kpis({ workspace: w, change }: Props) {
   const [search, setSearch] = useState("");

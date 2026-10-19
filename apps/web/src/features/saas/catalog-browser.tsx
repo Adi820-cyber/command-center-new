@@ -20,7 +20,7 @@ export function CatalogBrowser({
   startOpen = false,
 }: {
   workspace: SaasWorkspace;
-  change: (path: string, body: unknown) => Promise<void>;
+  change: (path: string, body: unknown) => Promise<boolean>;
   startOpen?: boolean;
 }) {
   const [open, setOpen] = useState(startOpen);

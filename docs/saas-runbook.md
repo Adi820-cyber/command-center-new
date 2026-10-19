@@ -116,6 +116,17 @@ In the control console (`/operator`):
 
 The console creates the organization, its roles and the invitations through database functions that return only ids. It cannot read the organization's figures.
 
+### What the owner manages
+
+When the owner signs in they land on **Organization**, their own management page:
+
+- **Overview**: rename the organization, see people, roles, KPIs and units at a glance, and a set-up checklist (structure, roles, people with roles, targets, first figures). The approval policy and setup proposals are here too.
+- **Roles & KPIs**: for every role, what it can do (see results, assign actions, upload data, approve data, set up KPIs and units), where (the whole organization, or one unit and everything under it), and exactly which KPIs it sees (or every KPI, including ones added later). Roles from a template can be edited the same way. A role someone holds cannot be deleted.
+- **People**: everyone's email and roles, change a person's roles, revoke access and restore it (roles are kept).
+- **Units**: the structure as a tree, and adding units.
+
+Every change is checked for ownership in the database as well as the API, and recorded in **Activity**. Other members do not see colleagues' emails or roles.
+
 ### How data gets in (CSV only)
 
 Members with the data-contributor role open **Data & approvals**, choose the KPIs and units they report on, and download the CSV format. It has one column for each input those KPIs need and one row for each unit. A second download explains every column. They fill it in, upload it, see every problem listed row by row, and submit. A data reviewer approves, which calculates every KPI for that unit and for each parent unit above it. A contributor cannot approve their own upload unless the owner allows it in the approval policy.

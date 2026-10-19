@@ -156,6 +156,10 @@ export const WorkspaceSchema = z.strictObject({
       displayName:z.string(),
       owner: z.boolean(),
       active: z.boolean(),
+      /** Shown to the organization's owner only. */
+      email: z.string().nullable().default(null),
+      /** The roles this member holds. Shown to the owner only. */
+      roleIds: z.array(z.uuid()).default([]),
     }),
   ),
   batches: z.array(

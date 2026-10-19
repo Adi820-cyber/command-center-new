@@ -336,6 +336,7 @@
   border-radius: 8px;
 }
 .saas-message {
+  display: block;
   padding: 15px 20px;
   border: 1px solid #bfd6c8;
   background: #edf7f1;

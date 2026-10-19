@@ -15,7 +15,7 @@ import "./v2.css";
 type Goto = "Ask" | "Data & approvals" | "KPI library";
 interface Props {
   workspace: SaasWorkspace;
-  change: (path: string, body: unknown) => Promise<void>;
+  change: (path: string, body: unknown) => Promise<boolean>;
   ask: (question: string) => void;
   goto: (tab: Goto) => void;
 }
