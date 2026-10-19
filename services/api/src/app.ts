@@ -4,6 +4,7 @@ import { buildApp } from './build.ts';
 import { loadConfig } from './config.ts';
 import { createDatabase } from './db/client.ts';
 import { createAuthAdmin } from './modules/saas/auth-admin.ts';
+import { createMailer } from './modules/saas/mail.ts';
 
 // Vercel entrypoint (src/app.ts). The app is built in ./build.ts. Vercel's
 // Fastify detection needs this file itself to import fastify.
@@ -17,6 +18,8 @@ buildApp({
   controlDatabase: config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined,
   identityDatabase: config.identityDatabaseUrl ? createDatabase({ url: config.identityDatabaseUrl }) : undefined,
   askProviders: config.askProviders,
+  mailer: config.mail ? createMailer(config.mail) : undefined,
+  enforcePasswordChange: config.enforcePasswordChange,
   authAdmin: config.supabaseSecretKey
     ? createAuthAdmin({ supabaseUrl: config.supabaseUrl, secretKey: config.supabaseSecretKey })
     : undefined,

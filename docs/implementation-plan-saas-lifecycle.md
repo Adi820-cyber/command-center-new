@@ -108,7 +108,19 @@ Verified: database checks (the identity role cannot read or change anything else
 **Phase 5, the owner as manager: done.** Migration `20261024000100_owner_manager.sql`: `kpi.retire_kpi`, `kpi.set_kpi_audience` (by key, across versions), `kpi.rename_unit`, `kpi.delete_unit` (only when nothing depends on it), `kpi.prepare_password_reset` (owner only; refuses anyone who also belongs to another organization). KPI activation is one shared helper used by "Approve & activate", "Add & activate" and "Create and activate". The identity API resets passwords.
 Verified: database checks, 33 API checks, 17 browser checks; all earlier suites still pass.
 
-**Left (not code):** Supabase mail service for password resets; the identity API's Vercel project and database login (runbook section 5).
+**Phase 6, password changes with an emailed code: done.**
+- Migration `20261026000100_email_codes.sql` adds `kpi.email_codes`, which stores only hashes, has forced RLS and no grants. It also adds `kpi.issue_email_code` and `kpi.use_email_code`, for the identity role only. Limits: 10 minutes per code, 5 attempts, one code a minute and 5 an hour, single use.
+- The identity API has two new routes: `POST /api/identity/me/password-code` and `POST /api/identity/me/password`.
+- Mail goes through Brevo's free plan, or a local outbox file for tests (`modules/saas/mail.ts`).
+- Logins carry `must_change_password` in `app_metadata` as well, which only the server can change. With `ENFORCE_PASSWORD_CHANGE=true`, the customer API refuses data until that flag is cleared through the code.
+- The change-password page has two steps: email a code, then enter the code and the new password.
+- Migration `20261025000100_operator_email_guard.sql` refuses an invitation to a platform operator's email, since such an invitation could never be accepted. The invite page says which account is signed in.
+
+Verified: database checks, 27 API checks, 8 browser checks; all earlier suites, now with the code step, still pass.
+
+**Left (not code):**
+- Supabase mail service for password resets.
+- The Brevo account, sender and key on the identity API, then `ENFORCE_PASSWORD_CHANGE=true` on the customer API (runbook section 6b).
 
 ## 10. Deliberately not built (to avoid mess)
 

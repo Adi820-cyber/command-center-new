@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { API_SURFACES, type ApiSurface } from './surface.ts';
 import { DEFAULT_EMBEDDING_MODEL } from './modules/chatbot/embedder.ts';
+import type { MailConfig } from './modules/saas/mail.ts';
 import { groqProvider, openRouterProvider, type ModelProvider } from './modules/ask/narrator.ts';
 
 /**
@@ -25,6 +26,14 @@ const EnvSchema = z.object({
   IDENTITY_DATABASE_URL: optional(z.string().min(1)),
   /** Supabase secret key. Control API only: it lets the operator create logins for the people they add. */
   SUPABASE_SECRET_KEY: optional(z.string().min(1)),
+  /** 'true': refuse customer data to anyone whose temporary password is not yet replaced through the emailed code. */
+  ENFORCE_PASSWORD_CHANGE: optional(z.enum(['true', 'false'])),
+  /** How the identity API sends codes: 'brevo' (free plan) or 'outbox' (a local file, for tests). */
+  MAIL_PROVIDER: optional(z.enum(['brevo', 'outbox'])),
+  BREVO_API_KEY: optional(z.string().min(1)),
+  MAIL_FROM: optional(z.email()),
+  MAIL_FROM_NAME: z.string().min(1).default('Command Center'),
+  MAIL_OUTBOX: optional(z.string().min(1)),
   ALLOWED_ORIGINS: z.string().default(''),
   ORBIT_LIVE_SOURCES: z.string().default(''),
   /** Which half of Orbit this deployment serves (src/surface.ts). Default `all`. */
@@ -54,6 +63,8 @@ export interface ApiConfig {
   kpiDatabaseUrl: string | undefined;
   controlDatabaseUrl: string | undefined;
   identityDatabaseUrl: string | undefined;
+  enforcePasswordChange: boolean;
+  mail: MailConfig | undefined;
   /** Present only on the control API. Absent means people are added by invitation link. */
   supabaseSecretKey: string | undefined;
   supabaseUrl: string;
@@ -113,6 +124,18 @@ export const DATABASE_SOURCES: readonly LiveSource[] = [
   'knowledge',
 ];
 
+function mailConfig(vars: z.infer<typeof EnvSchema>): MailConfig | undefined {
+  if (vars.MAIL_PROVIDER === 'outbox') {
+    if (!vars.MAIL_OUTBOX) throw new Error('MAIL_PROVIDER=outbox needs MAIL_OUTBOX (a file path)');
+    return { provider: 'outbox', file: vars.MAIL_OUTBOX };
+  }
+  if (vars.MAIL_PROVIDER === 'brevo') {
+    if (!vars.BREVO_API_KEY || !vars.MAIL_FROM) throw new Error('MAIL_PROVIDER=brevo needs BREVO_API_KEY and MAIL_FROM');
+    return { provider: 'brevo', apiKey: vars.BREVO_API_KEY, fromEmail: vars.MAIL_FROM, fromName: vars.MAIL_FROM_NAME };
+  }
+  return undefined;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
@@ -139,6 +162,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     kpiDatabaseUrl: vars.KPI_DATABASE_URL,
     controlDatabaseUrl: vars.CONTROL_DATABASE_URL,
     identityDatabaseUrl: vars.IDENTITY_DATABASE_URL,
+    enforcePasswordChange: vars.ENFORCE_PASSWORD_CHANGE === 'true',
+    mail: mailConfig(vars),
     supabaseSecretKey: vars.SUPABASE_SECRET_KEY,
     supabaseUrl: base,
     issuer: `${base}/auth/v1`,

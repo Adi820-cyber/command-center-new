@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AddLoginsRequestSchema, InviteMembersResponseSchema } from "@orbit/contracts";
+import { randomInt } from "node:crypto";
+import { AddLoginsRequestSchema, ChangeOwnPasswordRequestSchema, InviteMembersResponseSchema, PasswordCodeResponseSchema } from "@orbit/contracts";
+import { verifyAccessTokenClaims } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
-import { input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
+import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
+import { maskEmail } from "./mail.ts";
 import { prepareLogins } from "./logins.ts";
 import { temporaryPassword } from "./auth-admin.ts";
 
@@ -77,5 +80,63 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     const password = temporaryPassword();
     await options.authAdmin.resetPassword(login, password);
     return { temporaryPassword: password };
+  });
+
+  // --- Changing your own password, with a code sent to your email -------------
+  //
+  // Anyone signed in may use these for their own account, including someone who
+  // still has a temporary password: this is how they replace it. The code is
+  // stored only as a hash, tied to the person.
+  const codeHash = (subject: string, code: string) => hash(`${subject}:${code}`);
+
+  app.post("/api/identity/me/password-code", async (req) => {
+    if (!options.mailer) throw new ApiError("unavailable", "Email codes are not set up on this deployment yet.");
+    const me = await verifyAccessTokenClaims(req.headers.authorization, options.auth);
+    if (!me.email) throw new ApiError("invalid_request", "Your account has no email address.");
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    await inSubject(
+      options.identityDatabase,
+      me.sub,
+      async (tx) => {
+        await tx.query("select kpi.issue_email_code($1)", [codeHash(me.sub, code)]);
+      },
+      "kpi_identity_app",
+    );
+    try {
+      await options.mailer.send(
+        me.email,
+        `Your Command Center code: ${code}`,
+        [
+          `Your code is ${code}.`,
+          "",
+          "Use it to change your Command Center password. It works for 10 minutes.",
+          "If you did not ask for it, ignore this email: your password stays as it is.",
+        ].join("\n"),
+      );
+    } catch {
+      throw new ApiError("unavailable", "The email could not be sent. Try again in a minute.");
+    }
+    return PasswordCodeResponseSchema.parse({ sentTo: maskEmail(me.email), expiresInMinutes: 10 });
+  });
+
+  app.post("/api/identity/me/password", async (req) => {
+    if (!options.authAdmin) throw new ApiError("unavailable", "Changing passwords is not set up on this deployment.");
+    const me = await verifyAccessTokenClaims(req.headers.authorization, options.auth);
+    const body = input(ChangeOwnPasswordRequestSchema, req.body);
+    if (me.email && body.password.trim().toLowerCase() === me.email.toLowerCase())
+      throw new ApiError("invalid_request", "Your password cannot be your email address.");
+    // The result is committed before anything is refused, so a wrong code always counts as an attempt.
+    const right = await inSubject(
+      options.identityDatabase,
+      me.sub,
+      async (tx) => {
+        const [row] = await tx.query("select kpi.use_email_code($1) as ok", [codeHash(me.sub, body.code)]);
+        return row?.ok === true;
+      },
+      "kpi_identity_app",
+    );
+    if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
+    await options.authAdmin.setOwnPassword(me.sub, body.password);
+    return { ok: true };
   });
 }

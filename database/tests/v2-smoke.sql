@@ -529,5 +529,57 @@ begin
    res := res || 'customer_role_cannot_prepare_reset=' || (case when has_function_privilege('kpi_app','kpi.prepare_password_reset(uuid,uuid)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
   end;
 
+  -- emailed codes for password changes: hashed, one a minute, 5 wrong attempts, single use
+  declare
+    S uuid := gen_random_uuid(); right_code text := repeat('1', 64); wrong_code text := repeat('2', 64); ok boolean; tries int;
+  begin
+    set local role kpi_identity_app;
+    perform set_config('kpi.subject', S::text, true);
+    perform kpi.issue_email_code(right_code);
+    begin perform kpi.issue_email_code(wrong_code); res := res || 'code_twice_a_minute=ALLOWED(BUG);';
+    exception when sqlstate '55000' then res := res || 'code_twice_a_minute=blocked;'; end;
+    begin perform kpi.issue_email_code('123456'); res := res || 'plain_code_stored=ALLOWED(BUG);';
+    exception when sqlstate '22023' then res := res || 'plain_code_stored=blocked;'; when sqlstate '55000' then res := res || 'plain_code_stored=blocked;'; end;
+    ok := kpi.use_email_code(wrong_code);
+    res := res || 'wrong_code_refused=' || (not ok) || ';';
+    begin perform count(*) from kpi.email_codes; res := res || 'identity_reads_codes=ALLOWED(BUG);';
+    exception when insufficient_privilege then res := res || 'identity_reads_codes=blocked;'; end;
+    reset role;
+    select attempts into tries from kpi.email_codes where subject = S;
+    res := res || 'wrong_code_counted=' || (tries = 1) || ';';
+    set local role kpi_identity_app;
+    perform set_config('kpi.subject', S::text, true);
+    ok := kpi.use_email_code(right_code);
+    res := res || 'right_code_accepted=' || ok || ';';
+    begin perform kpi.use_email_code(right_code); res := res || 'code_reused=ALLOWED(BUG);';
+    exception when sqlstate '55000' then res := res || 'code_reused=blocked;'; end;
+    reset role;
+    -- five wrong attempts lock the code, even for the right one
+    update kpi.email_codes set created_at = created_at - interval '2 minutes' where subject = S;
+    set local role kpi_identity_app;
+    perform set_config('kpi.subject', S::text, true);
+    perform kpi.issue_email_code(right_code);
+    for i in 1..5 loop perform kpi.use_email_code(wrong_code); end loop;
+    begin perform kpi.use_email_code(right_code); res := res || 'locked_after_5=ALLOWED(BUG);';
+    exception when sqlstate '55000' then res := res || 'locked_after_5=blocked;'; end;
+    reset role;
+    res := res || 'customer_role_cannot_issue_codes=' || (case when has_function_privilege('kpi_app','kpi.issue_email_code(text)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+    res := res || 'code_functions_closed_to_public=' || (select bool_and(p.proacl is not null and not exists(select 1 from aclexplode(p.proacl) a where a.grantee = 0))
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'kpi' and p.proname in ('issue_email_code','use_email_code','refuse_operator_invitation')) || ';';
+  end;
+
+  -- an operator's email cannot be invited into an organization (needs auth.users; skipped without it)
+  begin
+    execute 'insert into auth.users(id, email) values ($1, $2)' using A, 'operator.smoke@x.com';
+    set local role kpi_control_app;
+    perform set_config('kpi.subject', A::text, true);
+    begin
+      perform kpi_control.provision_with_template('Op Co', 'Operator.Smoke@x.com', repeat('9', 64), 'retail-chain', '[]'::jsonb);
+      res := res || 'operator_email_as_owner=ALLOWED(BUG);';
+    exception when sqlstate '22023' then res := res || 'operator_email_as_owner=blocked;'; end;
+    reset role;
+  exception when undefined_table or not_null_violation then res := res || 'operator_email_as_owner=skipped;';
+  end;
+
   raise exception 'SMOKE_RESULT %', res;
 end $$;

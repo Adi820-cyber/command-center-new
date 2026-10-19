@@ -7,6 +7,7 @@ import { verifyAccessToken, type AuthOptions } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import type { ModelProvider } from "../ask/narrator.ts";
 import type { AuthAdmin } from "./auth-admin.ts";
+import type { Mailer } from "./mail.ts";
 
 export interface SaasOptions {
   auth: AuthOptions;
@@ -16,6 +17,10 @@ export interface SaasOptions {
   identityDatabase?: Database;
   /** Creates logins for the people an operator adds. Present only on the control API. */
   authAdmin?: AuthAdmin;
+  /** Sends emailed codes. Present only on the identity API. */
+  mailer?: Mailer;
+  /** Refuse data to anyone whose temporary password is not yet replaced. */
+  enforcePasswordChange?: boolean;
   /** Models that may reword an Ask answer. Empty keeps Ask fully deterministic. */
   askProviders?: readonly ModelProvider[];
 }
@@ -104,12 +109,19 @@ export async function inSubject<T>(
     if (e instanceof ApiError) throw e;
     const code =
       typeof e === "object" && e !== null && "code" in e ? e.code : undefined;
+    const message = e instanceof Error ? e.message : "";
+    // Refusals whose wording is our own and safe to show as it is.
+    if (code === "42501" && /Invitation forbidden/.test(message))
+      throw new ApiError("forbidden", "You are signed in with a platform operator account, which cannot join an organization. Sign out, then sign in as the invited person.");
+    if (code === "42501" && /Invitation unavailable/.test(message))
+      throw new ApiError("forbidden", "This invitation is not for the account you are signed in with, or it was already used or has expired.");
+    if (code === "22023" && /(belongs to a platform operator account|operator account cannot join)/.test(message))
+      throw new ApiError("invalid_request", "That email belongs to a platform operator account. Use a separate email for the organization's owner and members.");
     if (code === "42501")
       throw new ApiError(
         "forbidden",
         "This operation is not permitted. Check approval and membership rules.",
       );
-    const message = e instanceof Error ? e.message : "";
     const constraint =
       typeof e === "object" && e !== null && "constraint_name" in e ? String(e.constraint_name) : "";
     if (code === "23505" && constraint === "roles_tenant_id_name_key")
@@ -158,7 +170,7 @@ const INACTIVE_MESSAGE: Record<string, string> = {
 
 export function makeRunners(options: SaasOptions) {
   const subject = (req: FastifyRequest) =>
-    verifyAccessToken(req.headers.authorization, options.auth);
+    verifyAccessToken(req.headers.authorization, options.auth, { refusePendingPasswordChange: options.enforcePasswordChange === true });
 
   /**
    * Runs `fn` in one transaction as the caller, inside the organisation named

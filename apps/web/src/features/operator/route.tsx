@@ -486,7 +486,7 @@ export function OperatorConsoleRoute() {
                           />
                           <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                             <button type="button" disabled={busy} onClick={() => void addMembers(o.id)}>
-                              Create invitations
+                              Give them access
                             </button>
                             <button type="button" className="secondary" onClick={() => { setAddTo(""); setMorePeople([]); }}>
                               Cancel

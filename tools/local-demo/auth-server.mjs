@@ -41,12 +41,12 @@ export const subjectFor = (email) => {
 };
 const userFor = (email) => ({
   id: subjectFor(email), aud: 'authenticated', role: 'authenticated', email,
-  email_confirmed_at: '2026-01-01T00:00:00Z', phone: '', app_metadata: { provider: 'email', providers: ['email'] },
+  email_confirmed_at: '2026-01-01T00:00:00Z', phone: '', app_metadata: { provider: 'email', providers: ['email'], ...(registry[email.trim().toLowerCase()]?.app ?? {}) },
   user_metadata: registry[email.trim().toLowerCase()]?.metadata ?? {}, identities: [], created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', is_anonymous: false,
 });
 async function session(email) {
   const now = Math.floor(Date.now() / 1000);
-  const access_token = await new SignJWT({ email, role: 'authenticated', aal: 'aal1', session_id: subjectFor(email), is_anonymous: false })
+  const access_token = await new SignJWT({ email, role: 'authenticated', aal: 'aal1', session_id: subjectFor(email), is_anonymous: false, app_metadata: { provider: 'email', providers: ['email'], ...(registry[email]?.app ?? {}) }, user_metadata: registry[email]?.metadata ?? {} })
     .setProtectedHeader({ alg: 'ES256', kid: 'demo-key', typ: 'JWT' })
     .setIssuer(ISS).setAudience('authenticated').setSubject(subjectFor(email)).setIssuedAt(now).setExpirationTime(now + 3600)
     .sign(privateKey);
@@ -106,7 +106,7 @@ createServer(async (req, res) => {
         if (!/^[^\s@]+@[^\s@]+$/.test(email) || typeof b.password !== 'string' || b.password.length < 6)
           return send(req, res, 422, { error_code: 'validation_failed', msg: 'invalid email or password' });
         if (registry[email]) return send(req, res, 422, { error_code: 'email_exists', msg: 'A user with this email address has already been registered' });
-        registry[email] = { password: b.password, metadata: b.user_metadata ?? {} };
+        registry[email] = { password: b.password, metadata: b.user_metadata ?? {}, app: b.app_metadata ?? {} };
         saveRegistry();
         return send(req, res, 200, userFor(email));
       }
@@ -119,6 +119,7 @@ createServer(async (req, res) => {
       if (!email) return send(req, res, 404, { message: 'user not found' });
       if (typeof b.password === 'string') registry[email].password = b.password;
       if (b.user_metadata && typeof b.user_metadata === 'object') registry[email].metadata = { ...registry[email].metadata, ...b.user_metadata };
+      if (b.app_metadata && typeof b.app_metadata === 'object') registry[email].app = { ...(registry[email].app ?? {}), ...b.app_metadata };
       saveRegistry();
       return send(req, res, 200, userFor(email));
     }

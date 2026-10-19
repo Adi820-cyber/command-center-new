@@ -75,6 +75,7 @@ Use separate API services built from `services/api`:
 - Set `KPI_DATABASE_URL` to the `cc_kpi_data_login` connection only.
 - Leave `CONTROL_DATABASE_URL` empty.
 - Set `VITE_API_BASE_URL` in the web build to this service's HTTPS origin.
+- Once emailed codes work (see section 6b), set `ENFORCE_PASSWORD_CHANGE=true`. This API then refuses all data to anyone who still has a temporary password. Do not turn it on before email works, or new people will be locked out.
 
 ### Identity API (owners create logins)
 
@@ -83,6 +84,7 @@ The same code as the other two, started with only:
 - `SUPABASE_URL`, `ALLOWED_ORIGINS` (the web origin), `PORT`
 - `IDENTITY_DATABASE_URL`: a login that is a member of `kpi_identity_app` and nothing else (create it like the others: `create role cc_kpi_identity_login login noinherit nosuperuser nobypassrls password '...'; grant kpi_identity_app to cc_kpi_identity_login;`)
 - `SUPABASE_SECRET_KEY` (sensitive)
+- For emailed codes (section 6b): `MAIL_PROVIDER=brevo`, `BREVO_API_KEY` (sensitive) and `MAIL_FROM` (a sender address verified in Brevo), plus optionally `MAIL_FROM_NAME` (default "Command Center"). Without them, the change-password page falls back to changing the password directly, without a code.
 
 Set `VITE_IDENTITY_API_BASE_URL` in the web build to its HTTPS origin. Without it, owners add people by invitation link only. The database login can ask whether someone owns an organization and add people to it; it cannot read any table. The API refuses to start with more than one database credential, and refuses the secret key next to `KPI_DATABASE_URL`.
 
@@ -91,7 +93,7 @@ Set `VITE_IDENTITY_API_BASE_URL` in the web build to its HTTPS origin. Without i
 - Set the same verified Supabase Auth project values and its exact allowed web origin.
 - Set `CONTROL_DATABASE_URL` to the `cc_kpi_control_login` connection only.
 - Leave `KPI_DATABASE_URL` empty.
-- Optionally set `SUPABASE_SECRET_KEY` (Dashboard → Project Settings → API Keys → secret key) to let operators give people a login with a temporary password; see section 6a. Without it, people are added by invitation link. **Only this process may hold it.** The API refuses to start if it is set next to `KPI_DATABASE_URL`. Store it as a sensitive variable, never in a `VITE_*` variable, never in Git.
+- Optionally set `SUPABASE_SECRET_KEY` (Dashboard → Project Settings → API Keys → secret key) to let operators give people a login with a temporary password; see section 6a. Without it, people are added by invitation link. **Only the control and identity APIs may hold it.** The API refuses to start if it is set next to `KPI_DATABASE_URL`. Store it as a sensitive variable, never in a `VITE_*` variable, never in Git.
 - Set `VITE_CONTROL_API_BASE_URL` in the web build to this service's HTTPS origin.
 
 The backend refuses to start if both database credentials are set in one process. The frontend receives only the Supabase URL and publishable key; database passwords and Supabase service-role secrets never go into `VITE_*` variables. Transaction pooling uses port 6543 where available, TLS, and disabled prepared statements in the existing Postgres client.
@@ -118,11 +120,35 @@ In the control console (`/operator`):
 
    Either way, someone who already has an account cannot be given a new password silently, so they get an invitation link instead and the console says so. The same email cannot be added to an organization twice.
 
+   **Never use a platform operator's email for an owner or member.** Operator accounts cannot join organizations, so such an invitation could never be accepted. The database refuses it, and the console says: "That email belongs to a platform operator account. Use a separate email for the organization's owner and members." Use a separate address (for testing, a second mailbox or a `+` alias such as `you+owner@gmail.com`).
+
    If creating any one login fails, the ones already made are removed and nothing is saved.
 
 **What the secret key can do, and why it is only on the control API.** It can create, change and delete any login in the project, which is far more than this feature needs. That is why the customer API (which reads customer data) must never have it, and why the configuration enforces that. It is a deliberate widening of what the control API can do: with the key, a compromise of the control API could alter logins, though it still has no read access to customer figures. If that is not acceptable for a customer, leave the key out and use invitation links. Rotate the key in Supabase if it is ever exposed.
 
-**Temporary passwords are only as private as the way you send them.** Send each person their own details, not a list. The `must change password` flag is a prompt in the web app, not a server-side lock: it is stored in the user's own metadata, so a technical user could skip it. Treat the temporary password as a short-lived secret and ask people to sign in soon.
+**Temporary passwords are only as private as the way you send them.** Send each person their own details, not a list. Treat the temporary password as a short-lived secret and ask people to sign in soon. Each login carries a `must_change_password` flag in `app_metadata`, which only the server can change. With `ENFORCE_PASSWORD_CHANGE=true` on the customer API, nobody sees any data until they replace the temporary password through an emailed code (section 6b). Without it, the flag is only a prompt in the web app.
+
+## 6b. Password changes with an emailed code
+
+Whenever anyone changes their password, whether it's the first change from a temporary password or any later one, the change-password page first emails them a 6-digit code:
+
+1. They press **Email me a code**. The identity API makes a random code, stores only a hash of it, and emails it to the address on their account.
+2. They type the code and their new password (at least 12 characters, not their email). The identity API checks the code. If it is right, the API sets the password and clears the `must_change_password` flag.
+
+Limits, enforced in the database: a code lasts 10 minutes and allows 5 wrong attempts; one code a minute and 5 an hour per person; a new code cancels the previous one; each code works once.
+
+**Setting up free email (Brevo, 300 emails a day on the free plan):**
+
+1. Create a free account at brevo.com.
+2. **Senders, Domains & Dedicated IPs → Senders → Add a sender**: add the address codes will come from, and confirm it from that mailbox. A sender on your own domain (with Brevo's domain authentication) lands in inboxes more reliably than a Gmail address.
+3. **SMTP & API → API Keys → Generate a new API key.** Copy it once.
+4. On the identity API, set `MAIL_PROVIDER=brevo`, `BREVO_API_KEY` (sensitive) and `MAIL_FROM` (the verified sender), then redeploy.
+5. Test it: sign in, open **Change password**, press **Email me a code**, and check that the email arrives (and its spam folder).
+6. Only then set `ENFORCE_PASSWORD_CHANGE=true` on the customer API and redeploy it.
+
+If the email cannot be sent, the person sees "The email could not be sent. Try again in a minute." The API log shows the provider's status code, never the key or the code. To switch provider later, only `services/api/src/modules/saas/mail.ts` changes.
+
+**What this does not cover.** Someone who is already signed in holds a Supabase session, and Supabase itself would accept a direct password change on that session without a code. The app never offers that path when codes are set up. To close it completely, turn on **Secure password change** in Supabase (Authentication → Providers → Email), which makes Supabase require a recent sign-in for any direct change. The temporary-password case is fully covered, because the server-only flag is what the customer API checks.
 
 The console creates the organization, its roles and the invitations through database functions that return only ids. It cannot read the organization's figures.
 

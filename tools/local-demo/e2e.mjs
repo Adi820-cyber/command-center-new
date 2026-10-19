@@ -1,6 +1,7 @@
 // End-to-end check of the v2 flow against the LOCAL demo stack only.
 import { randomUUID } from "node:crypto";
-const AUTH = "http://127.0.0.1:54321/auth/v1", API = "http://localhost:3100", CTL = "http://localhost:3101";
+// CONTROL_API: a control API started WITHOUT the secret key (invitation links), e.g. http://localhost:3104.
+const AUTH = "http://127.0.0.1:54321/auth/v1", API = "http://localhost:3100", CTL = process.env.CONTROL_API ?? "http://localhost:3101";
 let pass = 0, fail = 0;
 const ok = (cond, label) => { cond ? pass++ : fail++; console.log(`${cond ? "PASS" : "FAIL"}  ${label}`); };
 const login = async (email) => (await (await fetch(`${AUTH}/token?grant_type=password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: "x" }) })).json());

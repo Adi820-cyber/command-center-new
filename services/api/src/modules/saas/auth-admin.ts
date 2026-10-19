@@ -14,8 +14,10 @@ export type CreatedLogin = { status: "created"; id: string } | { status: "exists
 export interface AuthAdmin {
   /** Creates a confirmed account that must choose its own password at first sign-in. */
   createUser(email: string, password: string): Promise<CreatedLogin>;
-  /** Sets a new temporary password that must be changed at the next sign-in. */
+  /** Sets a new temporary password that must be changed (through the emailed code) at the next sign-in. */
   resetPassword(id: string, password: string): Promise<void>;
+  /** Sets the person's own new password and clears the must-change flag. */
+  setOwnPassword(id: string, password: string): Promise<void>;
   /** Best-effort removal, used to undo logins when the rest of a provisioning step fails. */
   deleteUser(id: string): Promise<void>;
 }
@@ -36,6 +38,15 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
     "Content-Type": "application/json",
   };
   const signal = () => AbortSignal.timeout(options.timeoutMs ?? 10_000);
+  async function update(id: string, body: Record<string, unknown>, what: string) {
+    let response: Response;
+    try {
+      response = await call(`${base}/${encodeURIComponent(id)}`, { method: "PUT", headers, signal: signal(), body: JSON.stringify(body) });
+    } catch {
+      throw new Error("The login service did not answer.");
+    }
+    if (!response.ok) throw new Error(`The login service could not ${what} (status ${response.status}).`);
+  }
 
   return {
     async createUser(email, password) {
@@ -50,6 +61,8 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
             password,
             email_confirm: true,
             user_metadata: { must_change_password: true },
+            // app_metadata cannot be changed by the person; the API trusts only this copy.
+            app_metadata: { must_change_password: true },
           }),
         });
       } catch {
@@ -70,18 +83,11 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
     },
 
     async resetPassword(id, password) {
-      let response: Response;
-      try {
-        response = await call(`${base}/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          headers,
-          signal: signal(),
-          body: JSON.stringify({ password, user_metadata: { must_change_password: true } }),
-        });
-      } catch {
-        throw new Error("The login service did not answer.");
-      }
-      if (!response.ok) throw new Error(`The login service could not reset the password (status ${response.status}).`);
+      await update(id, { password, user_metadata: { must_change_password: true }, app_metadata: { must_change_password: true } }, "reset the password");
+    },
+
+    async setOwnPassword(id, password) {
+      await update(id, { password, user_metadata: { must_change_password: false }, app_metadata: { must_change_password: false } }, "change the password");
     },
 
     async deleteUser(id) {

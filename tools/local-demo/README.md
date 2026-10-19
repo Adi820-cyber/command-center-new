@@ -72,4 +72,10 @@ Runs the whole platform on one computer with no Supabase account: a throwaway Po
 
 `e2e-lifecycle.mjs` checks pending, active, suspended, deleted, restore and permanent deletion (with the control API's key). `e2e-identity.mjs` checks owner-issued logins; it needs the identity API on port 3102, started with `IDENTITY_DATABASE_URL` (a login granted `kpi_identity_app`) and `SUPABASE_SECRET_KEY=demo-secret`.
 
+`e2e-otp.mjs` checks password changes with an emailed code. Start the identity API with `MAIL_PROVIDER=outbox MAIL_OUTBOX=<a file>`: codes are written to that file, one JSON line per email, instead of being sent. Also start a second customer API on port 3103 with `ENFORCE_PASSWORD_CHANGE=true`. Set `OUTBOX` to the same file when running the test. It checks that a temporary password opens no data, that the code is emailed and stored only as a hash, the one-a-minute limit, wrong-code counting and the five-attempt lock, single use, that one person's code does not work for another, and that a platform operator's email is refused as an owner or member. It uses the superuser connection (`PGPASSWORD=demo-superuser-pw`, port 54329) to look inside the table and to skip the one-minute wait. Set `PSQL` if `psql` is elsewhere.
+
+With `VITE_IDENTITY_API_BASE_URL` set, the web app's change-password page uses the emailed code. Without it, the page changes the password directly.
+
+Run `e2e.mjs` with `CONTROL_API=http://localhost:3104` pointing at a control API started without the key.
+
 The same database rules are also checked, inside a transaction that is rolled back, by `database/tests/v2-smoke.sql`.

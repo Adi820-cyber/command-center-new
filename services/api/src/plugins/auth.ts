@@ -53,10 +53,32 @@ const SupabaseClaimsSchema = z.object({
 const UNAUTHENTICATED = 'Authentication is required.';
 const FORBIDDEN = 'Your account does not have access to Command Center.';
 
+export interface VerifiedToken {
+  sub: string;
+  email: string | null;
+  /**
+   * Set in app_metadata, which only the server can change: the person was given a
+   * temporary password and has not yet replaced it through the emailed code.
+   */
+  mustChangePassword: boolean;
+}
+
 export async function verifyAccessToken(
   authorization: string | undefined,
   options: Pick<AuthOptions, 'getKey' | 'issuer' | 'audience'>,
+  { refusePendingPasswordChange = false }: { refusePendingPasswordChange?: boolean } = {},
 ): Promise<string> {
+  const token = await verifyAccessTokenClaims(authorization, options);
+  if (refusePendingPasswordChange && token.mustChangePassword) {
+    throw new ApiError('forbidden', 'Choose your own password first. A code is sent to your email.', 'password_change_required');
+  }
+  return token.sub;
+}
+
+export async function verifyAccessTokenClaims(
+  authorization: string | undefined,
+  options: Pick<AuthOptions, 'getKey' | 'issuer' | 'audience'>,
+): Promise<VerifiedToken> {
   const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(authorization ?? '');
   const token = match?.[1];
   if (!token) {
@@ -83,7 +105,13 @@ export async function verifyAccessToken(
   if (!claims.success) {
     throw new ApiError('unauthenticated', UNAUTHENTICATED, 'unexpected_token_claims');
   }
-  return claims.data.sub;
+  const raw = payload as Record<string, unknown>;
+  const app = raw.app_metadata;
+  return {
+    sub: claims.data.sub,
+    email: typeof raw.email === 'string' ? raw.email : null,
+    mustChangePassword: typeof app === 'object' && app !== null && Reflect.get(app, 'must_change_password') === true,
+  };
 }
 
 /** Resolve the subject to exactly one active membership, or deny. */

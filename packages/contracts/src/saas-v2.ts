@@ -179,3 +179,17 @@ export const AddLoginsRequestSchema = z.strictObject({
 export const ResetPasswordResponseSchema = z.strictObject({
   temporaryPassword: z.string(),
 });
+
+// ---------------------------------------------------------------------------
+// Changing a password with an emailed code
+// ---------------------------------------------------------------------------
+
+export const PasswordCodeResponseSchema = z.strictObject({
+  /** Where the code went, partly hidden. */
+  sentTo: z.string(),
+  expiresInMinutes: z.number().int().positive(),
+});
+export const ChangeOwnPasswordRequestSchema = z.strictObject({
+  code: z.string().regex(/^\d{6}$/, "The code has 6 digits."),
+  password: z.string().min(12, "Use at least 12 characters.").max(72, "Use at most 72 characters."),
+});

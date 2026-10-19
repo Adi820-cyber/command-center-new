@@ -7,6 +7,7 @@ import type { ApiSurface } from "./surface.ts";
 import type { Database } from "./db/client.ts";
 import type { ModelProvider } from "./modules/ask/narrator.ts";
 import type { AuthAdmin } from "./modules/saas/auth-admin.ts";
+import type { Mailer } from "./modules/saas/mail.ts";
 import { registerSaasRoutes } from "./modules/saas/routes.ts";
 
 export interface AppOptions {
@@ -18,6 +19,10 @@ export interface AppOptions {
   identityDatabase?: Database;
   /** Creates logins for people an operator adds (control API only). */
   authAdmin?: AuthAdmin;
+  /** Identity API only: sends emailed codes. */
+  mailer?: Mailer;
+  /** Refuse data to anyone whose temporary password is not yet replaced. */
+  enforcePasswordChange?: boolean;
   /** Models that may reword an Ask answer. Leave empty to keep Ask fully deterministic. */
   askProviders?: readonly ModelProvider[];
   logger?: boolean;

@@ -46,6 +46,7 @@ describe("createAuthAdmin", () => {
       password: "Ab3d-Efg4-Hjk5",
       email_confirm: true,
       user_metadata: { must_change_password: true },
+      app_metadata: { must_change_password: true },
     });
   });
 
@@ -89,9 +90,15 @@ describe("createAuthAdmin", () => {
     await admin(async (url, init) => { seen = { url: urlOf(url), init }; return reply(200, {}); }).resetPassword("abc", "Ab3d-Efg4-Hjk5");
     expect(seen?.url).toBe("https://project.supabase.co/auth/v1/admin/users/abc");
     expect(seen?.init?.method).toBe("PUT");
-    expect(JSON.parse(bodyOf(seen?.init))).toEqual({ password: "Ab3d-Efg4-Hjk5", user_metadata: { must_change_password: true } });
+    expect(JSON.parse(bodyOf(seen?.init))).toEqual({ password: "Ab3d-Efg4-Hjk5", user_metadata: { must_change_password: true }, app_metadata: { must_change_password: true } });
     const failed = await admin(async () => reply(500, { msg: "sb_secret_TESTKEY" })).resetPassword("abc", "pw").catch((e: Error) => e);
     expect((failed as Error).message).toMatch(/status 500/);
     expect((failed as Error).message).not.toContain("sb_secret_TESTKEY");
+  });
+
+  it("sets the person's own password and clears the flag in both places", async () => {
+    let body: unknown;
+    await admin(async (_url, init) => { body = JSON.parse(bodyOf(init)); return reply(200, {}); }).setOwnPassword("abc", "My-own-password-1");
+    expect(body).toEqual({ password: "My-own-password-1", user_metadata: { must_change_password: false }, app_metadata: { must_change_password: false } });
   });
 });

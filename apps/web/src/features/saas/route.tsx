@@ -20,6 +20,7 @@ import {
   type SaasWorkspace,
 } from "@orbit/contracts";
 import { getAuthClient, getCurrentSession, signOut } from "../../lib/auth";
+import { mustChangePassword } from "../auth/change-password-route";
 import { mutate, request } from "./client";
 import { AskPanel } from "./ask-panel";
 import { CatalogBrowser } from "./catalog-browser";
@@ -104,7 +105,7 @@ export function SaasRoute() {
     void getCurrentSession().then((session) => {
       if (!active) return;
       setEmail(session?.user.email ?? "");
-      if (session?.user.user_metadata?.must_change_password === true) window.location.replace("/change-password");
+      if (mustChangePassword(session?.user)) window.location.replace("/change-password");
     });
     request("/api/saas/organizations", TenantListSchema)
       .then((rows) => {
@@ -1208,6 +1209,11 @@ export function InvitationRoute() {
   const [token] = useState(() => window.location.hash.slice(1));
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // Who is signed in, so a person can see at once whether it is the invited account.
+  const [signedInAs, setSignedInAs] = useState<string | null>();
+  useEffect(() => {
+    void getCurrentSession().then((session) => setSignedInAs(session?.user.email ?? null));
+  }, []);
   return (
     <main className="saas-auth">
       <p className="eyebrow">YOUR WORKSPACE INVITATION</p>
@@ -1216,6 +1222,22 @@ export function InvitationRoute() {
         Sign in with the email that received this invitation, then accept. Your
         organization controls your access.
       </p>
+      {signedInAs !== undefined && (
+        <p className="warn" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          {signedInAs ? (
+            <>
+              <span>
+                You are signed in as <strong>{signedInAs}</strong>. If that is not the invited email, sign out first.
+              </span>
+              <button type="button" className="secondary" onClick={() => void signOut().then(() => window.location.reload())}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <span>You are not signed in. Sign in (or create your account) with the invited email, then come back to this link.</span>
+          )}
+        </p>
+      )}
       <button
         disabled={busy || !token}
         onClick={onClickAsync(async () => {
