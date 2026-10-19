@@ -71,6 +71,18 @@ const pending = (await workspace(review)).batches.find((b) => b.status === "subm
 ok((await raw(API, review, "POST", `/api/saas/${org.id}/batches/${pending.id}/approve`, {})).status === 200, "the reviewer approves it");
 ok((await workspace(ceo)).results.length > 0, "the executive now sees results for their KPIs");
 
+// 4b. nobody but a signed-in operator can make this API create a login
+const attempts = async () => (await (await fetch(`${AUTH}/admin/attempts`)).json()).attempts;
+const validBody = (n) => ({ name: `Intruder ${n}`, ownerEmail: mail(`intruder${n}`), templateId: "diagnostics-lab", members: [{ email: mail(`intruder${n}m`), roleKeys: ["executive"] }] });
+const tried = await attempts();
+const anon = await fetch(CTL + "/api/control/organizations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(validBody(1)) });
+ok(anon.status === 401, `a request with no sign-in is refused (${anon.status})`);
+const asCustomer = await raw(CTL, ownerLogin, "POST", "/api/control/organizations", validBody(2));
+ok(asCustomer.status === 403, `a signed-in customer is refused (${asCustomer.status})`);
+const addAsCustomer = await raw(CTL, ceo, "POST", `/api/control/organizations/${org.id}/members`, { members: [{ email: mail("sneaky"), roleKeys: ["executive"] }] });
+ok(addAsCustomer.status === 403, `a customer cannot add people through the control API (${addAsCustomer.status})`);
+ok((await attempts()) === tried, "and none of those requests even tried to create a login");
+
 // 5. the operator still cannot see the customer's data
 ok((await raw(API, op, "GET", `/api/saas/${org.id}/workspace`)).status === 403, "the operator cannot open the customer workspace");
 

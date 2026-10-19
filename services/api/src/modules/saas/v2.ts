@@ -54,6 +54,14 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
       return fn(tx);
     }, "kpi_control_app");
 
+  /**
+   * Proves the caller is a signed-in platform operator, and does nothing else.
+   * Creating logins uses Supabase's secret key, so this must run BEFORE any login
+   * is created: otherwise anyone could make this API create accounts and only
+   * be turned away afterwards.
+   */
+  const requireOperator = (req: Parameters<typeof subject>[0]) => control(req, async () => undefined);
+
   // The KPI catalog is reference data, the same for everyone who is signed in.
   app.get("/api/saas/catalog", async (req) =>
     inSubject(options.database, await subject(req), async (tx) => {
@@ -138,6 +146,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
       throw new ApiError("invalid_request", "The owner is already listed; leave them out of the member list.");
 
     if (options.authAdmin) {
+      await requireOperator(req);
       const prepared = await prepareLogins(
         [{ email: body.ownerEmail, roleKeys: [], owner: true }, ...body.members],
         options.authAdmin,
@@ -190,6 +199,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
     const body = input(InviteMembersRequestSchema, req.body);
 
     if (options.authAdmin) {
+      await requireOperator(req);
       const prepared = await prepareLogins(body.members, options.authAdmin);
       try {
         await control(req, async (tx) => {

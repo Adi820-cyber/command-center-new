@@ -30,6 +30,8 @@ const usersFile = join(here, 'users.json');
 const registry = existsSync(usersFile) ? JSON.parse(readFileSync(usersFile, 'utf8')) : {};
 const saveRegistry = () => writeFileSync(usersFile, JSON.stringify(registry));
 const ADMIN_KEY = 'demo-secret';
+// Every admin create attempt since start-up, so a test can tell whether one was even tried.
+const adminAttempts = [];
 const privateKey = await importJWK(privateJwk, 'ES256');
 const publicKey = await importJWK(publicJwk, 'ES256');
 
@@ -94,11 +96,13 @@ createServer(async (req, res) => {
       }
       return send(req, res, 200, userFor(email));
     }
+    if (path === '/admin/attempts') return send(req, res, 200, { attempts: adminAttempts.length });
     if (path === '/admin/users') {
       if (req.headers.authorization !== `Bearer ${ADMIN_KEY}`) return send(req, res, 401, { message: 'admin key required' });
       if (req.method === 'POST') {
         const b = await readBody(req);
         const email = String(b.email ?? '').trim().toLowerCase();
+        adminAttempts.push(email);
         if (!/^[^\s@]+@[^\s@]+$/.test(email) || typeof b.password !== 'string' || b.password.length < 6)
           return send(req, res, 422, { error_code: 'validation_failed', msg: 'invalid email or password' });
         if (registry[email]) return send(req, res, 422, { error_code: 'email_exists', msg: 'A user with this email address has already been registered' });
