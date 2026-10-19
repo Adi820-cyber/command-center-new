@@ -45,14 +45,22 @@ export function checkFormula(text: string, measures: SaasWorkspace["measures"]):
 export function CustomKpiForm({
   workspace: w,
   change,
+  editing,
+  onDone,
 }: {
   workspace: SaasWorkspace;
   change: (path: string, body: unknown) => Promise<boolean>;
+  /** An active KPI to change. Saving creates its next version. */
+  editing?: SaasWorkspace["kpis"][number];
+  /** Called after a successful save. */
+  onDone?: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [key, setKey] = useState("");
-  const [keyTouched, setKeyTouched] = useState(false);
-  const [text, setText] = useState("");
+  const owner = w.organization.owner;
+  const [name, setName] = useState(editing?.name ?? "");
+  const [key, setKey] = useState(editing?.key ?? "");
+  const [keyTouched, setKeyTouched] = useState(editing !== undefined);
+  const [text, setText] = useState(editing ? formatFormula(editing.formula) : "");
+  const [activate, setActivate] = useState(owner);
   const [query, setQuery] = useState("");
   const check = useMemo(() => checkFormula(text, w.measures), [text, w.measures]);
   const effectiveKey = keyTouched ? key : slug(name);
@@ -66,7 +74,7 @@ export function CustomKpiForm({
     if (!check.formula || !check.unit) return;
     const f = new FormData(event.currentTarget);
     const value = (n: string) => formText(f, n);
-    await change("/kpis", {
+    const ok = await change("/kpis", {
       key: effectiveKey,
       name: value("name"),
       description: value("description"),
@@ -74,14 +82,20 @@ export function CustomKpiForm({
       formula: check.formula,
       direction: value("direction"),
       target: value("target") || null,
+      ...(owner && activate ? { activate: true } : {}),
     });
+    if (ok) onDone?.();
   }
 
   return (
-    <section className="saas-card">
-      <h2>Write your own KPI</h2>
+    <section className="saas-card" id="kpi-form">
+      <h2>{editing ? `Edit “${editing.name}”` : "Write your own KPI"}</h2>
       <p>
-        Type a formula using your inputs. Using an existing key creates a new version. The owner reviews and activates it.
+        {editing
+          ? `Saving creates version ${Math.max(...w.kpis.filter((k) => k.key === editing.key).map((k) => k.version)) + 1}. The current version keeps working until the new one is activated, and its past results are kept.`
+          : owner
+            ? "Type a formula using your inputs. You can activate it straight away."
+            : "Type a formula using your inputs. The owner reviews and activates it."}
       </p>
       <form onSubmit={(event) => void submit(event)}>
         <div className="saas-form-grid">
@@ -97,6 +111,7 @@ export function CustomKpiForm({
               pattern="[a-z][a-z0-9_]*"
               maxLength={64}
               value={effectiveKey}
+              readOnly={editing !== undefined}
               onChange={(e) => {
                 setKeyTouched(true);
                 setKey(e.target.value);
@@ -106,7 +121,7 @@ export function CustomKpiForm({
         </div>
         <label>
           What it measures
-          <textarea name="description" required maxLength={2000} />
+          <textarea name="description" required maxLength={2000} defaultValue={editing?.description} />
         </label>
         <label>
           Formula
@@ -153,18 +168,33 @@ export function CustomKpiForm({
         <div className="saas-form-grid">
           <label>
             Target (optional)
-            <input name="target" inputMode="decimal" />
+            <input name="target" inputMode="decimal" defaultValue={editing?.target ?? ""} />
           </label>
           <label>
             Direction
-            <select name="direction">
+            <select name="direction" defaultValue={editing?.direction ?? "neutral"}>
               <option value="neutral">Monitor only</option>
               <option value="higher">Higher is better</option>
               <option value="lower">Lower is better</option>
             </select>
           </label>
         </div>
-        <button disabled={!check.formula || !effectiveKey}>Create draft</button>
+        {owner && (
+          <label className="saas-checkbox" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={activate} onChange={(e) => setActivate(e.target.checked)} style={{ width: "auto" }} />
+            Activate it now{editing ? " (replaces the current version)" : ""}
+          </label>
+        )}
+        <div className="csv-actions">
+          <button disabled={!check.formula || !effectiveKey}>
+            {owner && activate ? (editing ? "Save and activate" : "Create and activate") : editing ? "Save as a new draft" : "Create draft"}
+          </button>
+          {editing && (
+            <button type="button" className="secondary" onClick={() => onDone?.()}>
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );

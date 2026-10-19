@@ -174,3 +174,8 @@ export const AddLoginsRequestSchema = z.strictObject({
     .min(1)
     .max(50),
 });
+
+/** A new temporary password for one person, shown to the owner once. */
+export const ResetPasswordResponseSchema = z.strictObject({
+  temporaryPassword: z.string(),
+});

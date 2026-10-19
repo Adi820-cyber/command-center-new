@@ -880,3 +880,34 @@ fieldset.csv-choices {
   color: #8fb3a9;
   font-size: 11px;
 }
+
+/* ---- Units: rename and delete in place --------------------------------- */
+.unit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.unit-actions {
+  display: flex;
+  gap: 6px;
+}
+.saas-shell .unit-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.unit-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.unit-edit input {
+  max-width: 200px;
+}
+.audience {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--soft);
+  border-radius: 8px;
+}

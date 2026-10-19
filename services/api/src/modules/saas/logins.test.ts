@@ -15,6 +15,7 @@ function fakeAdmin(existing: string[] = [], failOn?: string) {
       created.push(id);
       return { status: "created", id };
     },
+    async resetPassword() {},
     async deleteUser(id) {
       deleted.push(id);
     },

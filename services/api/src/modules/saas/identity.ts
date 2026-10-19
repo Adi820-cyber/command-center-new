@@ -4,6 +4,7 @@ import { AddLoginsRequestSchema, InviteMembersResponseSchema } from "@orbit/cont
 import { ApiError } from "../../plugins/errors.ts";
 import { input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
 import { prepareLogins } from "./logins.ts";
+import { temporaryPassword } from "./auth-admin.ts";
 
 /**
  * The identity API: an organization's owner creates logins for the people they add.
@@ -55,5 +56,26 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       await prepared.undo();
       throw error;
     }
+  });
+
+  // A new temporary password for someone who forgot theirs. Only for a person who
+  // belongs to this organization alone; the database checks that, and the owner,
+  // before the key is used.
+  app.post("/api/identity/organizations/:tenantId/members/:memberId/reset-password", async (req) => {
+    const { tenantId, memberId } = input(z.object({ tenantId: uuid, memberId: uuid }), req.params);
+    if (!options.authAdmin) throw new ApiError("unavailable", "Resetting passwords is not set up on this deployment.");
+    const sub = await subject(req);
+    const login = await inSubject(
+      options.identityDatabase,
+      sub,
+      async (tx) => {
+        const [row] = await tx.query("select kpi.prepare_password_reset($1::uuid,$2::uuid) as subject", [tenantId, memberId]);
+        return uuid.parse(row?.subject);
+      },
+      "kpi_identity_app",
+    );
+    const password = temporaryPassword();
+    await options.authAdmin.resetPassword(login, password);
+    return { temporaryPassword: password };
   });
 }

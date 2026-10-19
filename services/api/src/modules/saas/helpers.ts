@@ -62,6 +62,19 @@ export async function permit(
       "Your account does not have permission for this operation.",
     );
 }
+/**
+ * Activates a draft KPI: the active version with the same key retires, the draft
+ * becomes active. Owner only. Used by "Approve & activate" and "Add & activate".
+ */
+export async function activateDraft(tx: Tx, tenant: string, id: string, subject: string) {
+  await owner(tx, tenant);
+  const [draft] = await tx.query("select key from kpi.definitions where tenant_id=$1 and id=$2 and state='draft'", [tenant, id]);
+  if (!draft) throw new ApiError("conflict", "Only a draft KPI can be activated.");
+  await tx.query("update kpi.definitions set state='retired' where tenant_id=$1 and key=$2 and state='active'", [tenant, String(draft.key)]);
+  await tx.query("update kpi.definitions set state='active',approved_by=$3 where tenant_id=$1 and id=$2", [tenant, id, subject]);
+  await audit(tx, tenant, subject, "kpi.activated", id);
+}
+
 export async function owner(tx: Tx, tenant: string) {
   const [row] = await tx.query("select kpi.is_owner($1) as allowed", [tenant]);
   if (row?.allowed !== true)

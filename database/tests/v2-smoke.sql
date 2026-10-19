@@ -434,5 +434,100 @@ begin
    res := res || 'failed_attempts_left_nothing=' || (cnt = 3) || ';';
   end;
 
+  -- 12. the owner as manager: retire, who sees a KPI, units, password resets
+  declare
+    m1 uuid := gen_random_uuid(); m2 uuid := gen_random_uuid(); m3 uuid := gen_random_uuid(); mt uuid; mt2 uuid;
+    exec_role uuid; kd uuid; root_u uuid; leaf uuid; parent_u uuid; mem uuid; mem_shared uuid; mem_owner uuid; mem_other uuid; cnt int; st text; sub uuid;
+  begin
+   set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   mt := kpi_control.provision_with_people('Manager Co', 'diagnostics-lab', jsonb_build_array(
+     jsonb_build_object('email','owner@mgr.test','owner',true,'subject',m1),
+     jsonb_build_object('email','ceo@mgr.test','roleKeys','["executive"]'::jsonb,'subject',m2)));
+   perform kpi_control.record_creation(mt, true, 'owner@mgr.test', true);
+   mt2 := kpi_control.provision_with_people('Manager Other', 'diagnostics-lab', jsonb_build_array(
+     jsonb_build_object('email','o@mgr2.test','owner',true,'subject',gen_random_uuid()),
+     jsonb_build_object('email','shared@mgr.test','roleKeys','["executive"]'::jsonb,'subject',m3)));
+   perform kpi_control.record_creation(mt2, true, 'o@mgr2.test', true);
+   reset role;
+   select id into exec_role from kpi.roles where tenant_id=mt and template_key='executive';
+   select id into kd from kpi.definitions where tenant_id=mt and state='active' and not exists(
+     select 1 from kpi.grants g join kpi.definitions v on v.tenant_id=g.tenant_id and v.id=g.kpi_id
+     where g.tenant_id=mt and g.role_id=exec_role and v.key=kpi.definitions.key) limit 1;
+   select id into root_u from kpi.units where tenant_id=mt and parent_id is null;
+   insert into kpi.memberships(tenant_id,subject,display_name,email) values (mt, m3, 'shared', 'shared@mgr.test');
+
+   set local role kpi_app;
+   perform set_config('kpi.subject', m2::text, true);
+   begin perform kpi.retire_kpi(mt, kd); res := res || 'member_retires_kpi=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'member_retires_kpi=blocked;'; end;
+   begin perform kpi.set_kpi_audience(mt, kd, array[exec_role]); res := res || 'member_sets_audience=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'member_sets_audience=blocked;'; end;
+   begin perform kpi.rename_unit(mt, root_u, 'X', 'Y'); res := res || 'member_renames_unit=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'member_renames_unit=blocked;'; end;
+   select count(*) into cnt from kpi.definitions where tenant_id=mt and id=kd;
+   res := res || 'executive_sees_kpi_before=' || (case when cnt = 0 then 'no' else 'yes' end) || ';';
+
+   perform set_config('kpi.subject', m1::text, true);
+   perform kpi.set_kpi_audience(mt, kd, array[exec_role]);
+   perform set_config('kpi.subject', m2::text, true);
+   select count(*) into cnt from kpi.definitions where tenant_id=mt and id=kd;
+   res := res || 'audience_shows_kpi=' || (cnt = 1) || ';';
+   perform set_config('kpi.subject', m1::text, true);
+   perform kpi.set_kpi_audience(mt, kd, '{}');
+   perform set_config('kpi.subject', m2::text, true);
+   select count(*) into cnt from kpi.definitions where tenant_id=mt and id=kd;
+   res := res || 'audience_hides_kpi=' || (cnt = 0) || ';';
+   perform set_config('kpi.subject', m1::text, true);
+   begin perform kpi.set_kpi_audience(mt, kd, array[(select id from kpi.roles where tenant_id=mt2 limit 1)]);
+     res := res || 'audience_foreign_role=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'audience_foreign_role=blocked;'; end;
+   begin perform kpi.retire_kpi(mt2, (select id from kpi.definitions where tenant_id=mt2 limit 1));
+     res := res || 'owner_retires_other_org_kpi=ALLOWED(BUG);'; exception when insufficient_privilege then res := res || 'owner_retires_other_org_kpi=blocked;'; end;
+   perform kpi.retire_kpi(mt, kd);
+   select state into st from kpi.definitions where tenant_id=mt and id=kd;
+   res := res || 'owner_retires_kpi=' || (st = 'retired') || ';';
+   begin perform kpi.retire_kpi(mt, kd); res := res || 'retire_twice=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'retire_twice=blocked;'; end;
+   begin update kpi.definitions set state='active' where id=kd; res := res || 'unretire=ALLOWED(BUG);';
+   exception when others then res := res || 'unretire=blocked;'; end;
+
+   -- units
+   insert into kpi.units(tenant_id,name,kind,parent_id) values(mt,'Parent','Region',root_u) returning id into parent_u;
+   insert into kpi.units(tenant_id,name,kind,parent_id) values(mt,'Leaf','Branch',parent_u) returning id into leaf;
+   perform kpi.rename_unit(mt, leaf, 'Renamed', 'Branch');
+   select name into st from kpi.units where id=leaf;
+   res := res || 'owner_renames_unit=' || (st = 'Renamed') || ';';
+   begin perform kpi.delete_unit(mt, parent_u); res := res || 'delete_unit_with_children=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'delete_unit_with_children=blocked;'; end;
+   begin perform kpi.delete_unit(mt, root_u); res := res || 'delete_root=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'delete_root=blocked;'; end;
+   perform kpi.delete_unit(mt, leaf);
+   select count(*) into cnt from kpi.units where id=leaf;
+   res := res || 'owner_deletes_unused_unit=' || (cnt = 0) || ';';
+   reset role;
+
+   -- password resets: only the owner, only someone who belongs nowhere else
+   -- look the members up first: the identity role cannot read memberships at all
+   select id into mem from kpi.memberships where tenant_id=mt and subject=m2;
+   select id into mem_shared from kpi.memberships where tenant_id=mt and subject=m3;
+   select id into mem_owner from kpi.memberships where tenant_id=mt and owner;
+   select id into mem_other from kpi.memberships where tenant_id=mt2 and not owner limit 1;
+   set local role kpi_identity_app;
+   perform set_config('kpi.subject', m2::text, true);
+   begin perform kpi.prepare_password_reset(mt, mem); res := res || 'member_resets=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'member_resets=blocked;'; end;
+   perform set_config('kpi.subject', m1::text, true);
+   sub := kpi.prepare_password_reset(mt, mem);
+   res := res || 'owner_resets_member=' || (sub = m2) || ';';
+   begin perform kpi.prepare_password_reset(mt, mem_shared);
+     res := res || 'reset_shared_login=ALLOWED(BUG);'; exception when sqlstate '55000' then res := res || 'reset_shared_login=blocked;'; end;
+   begin perform kpi.prepare_password_reset(mt, mem_owner);
+     res := res || 'reset_owner=ALLOWED(BUG);'; exception when sqlstate '55000' then res := res || 'reset_owner=blocked;'; end;
+   begin perform kpi.prepare_password_reset(mt2, mem_other);
+     res := res || 'reset_in_other_org=ALLOWED(BUG);'; exception when insufficient_privilege then res := res || 'reset_in_other_org=blocked;'; end;
+   reset role;
+   res := res || 'identity_role_cannot_retire=' || (case when has_function_privilege('kpi_identity_app','kpi.retire_kpi(uuid,uuid)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'customer_role_cannot_prepare_reset=' || (case when has_function_privilege('kpi_app','kpi.prepare_password_reset(uuid,uuid)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+  end;
+
   raise exception 'SMOKE_RESULT %', res;
 end $$;

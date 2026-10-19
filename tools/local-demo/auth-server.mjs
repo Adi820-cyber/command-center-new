@@ -112,6 +112,16 @@ createServer(async (req, res) => {
       }
     }
     const adminDelete = /^\/admin\/users\/([0-9a-f-]+)$/.exec(path);
+    if (adminDelete && req.method === 'PUT') {
+      if (req.headers.authorization !== `Bearer ${ADMIN_KEY}`) return send(req, res, 401, { message: 'admin key required' });
+      const b = await readBody(req);
+      const email = Object.keys(registry).find((e) => subjectFor(e) === adminDelete[1]);
+      if (!email) return send(req, res, 404, { message: 'user not found' });
+      if (typeof b.password === 'string') registry[email].password = b.password;
+      if (b.user_metadata && typeof b.user_metadata === 'object') registry[email].metadata = { ...registry[email].metadata, ...b.user_metadata };
+      saveRegistry();
+      return send(req, res, 200, userFor(email));
+    }
     if (adminDelete && req.method === 'DELETE') {
       if (req.headers.authorization !== `Bearer ${ADMIN_KEY}`) return send(req, res, 401, { message: 'admin key required' });
       for (const email of Object.keys(registry)) if (subjectFor(email) === adminDelete[1]) delete registry[email];

@@ -148,6 +148,18 @@ When the owner signs in they land on **Organization**, their own management page
 - **People**: everyone's email and roles, change a person's roles, revoke access and restore it (roles are kept).
 - **Units**: the structure as a tree, and adding units.
 
+In **KPI library** the owner runs the KPIs:
+
+- **Predefined KPIs**: from the catalog, **Add & activate** puts one to work at once.
+- **Their own KPIs**: write a formula and **Create and activate**.
+- **Edit** opens a KPI's formula and details; saving makes the next version (the old one is kept as history).
+- **Who sees it** chooses, from the KPI, which roles see it. A role that sees every KPI always does.
+- **Stop using** retires a KPI; a draft can be **Discarded**. Past results are kept. Retired versions are hidden unless "Show retired" is ticked.
+
+In **Units**, a unit can be renamed, or deleted when nothing depends on it (no units under it, no figures or results, no locked periods, no role limited to it; never the top unit).
+
+In **People**, **Reset password** gives a person a new temporary password (identity API). This works only for someone who belongs to this organization alone, so one owner can never take over an account that also works elsewhere; such a person resets their own password, or the service provider does.
+
 Every change is checked for ownership in the database as well as the API, and recorded in **Activity**. Other members do not see colleagues' emails or roles.
 
 ### How data gets in (CSV only)

@@ -15,7 +15,7 @@ import {
 import { narrate } from "../ask/narrator.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import { answerQuestion } from "./ask.ts";
-import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
+import { activateDraft, hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
 import { assertDistinct, prepareLogins } from "./logins.ts";
 import { loadWorkspace } from "./workspace.ts";
 
@@ -61,10 +61,14 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
 
   // Copies a catalog KPI into the organisation as a draft the owner can activate.
   app.post("/api/saas/:tenantId/catalog/:catalogId/add", async (req) =>
-    tenant(req, async (tx, t) => {
+    tenant(req, async (tx, t, sub) => {
       const { catalogId } = input(z.object({ catalogId: CATALOG_ID }), req.params);
+      const { activate } = input(z.strictObject({ activate: z.boolean().default(false) }), req.body ?? {});
       const [row] = await tx.query("select kpi.add_catalog_kpi($1::uuid,$2) as id", [t, catalogId]);
-      return { id: uuid.parse(row?.id) };
+      const id = uuid.parse(row?.id);
+      // The owner approves KPIs, so they may add and activate in one step.
+      if (activate) await activateDraft(tx, t, id, sub);
+      return { id };
     }),
   );
 

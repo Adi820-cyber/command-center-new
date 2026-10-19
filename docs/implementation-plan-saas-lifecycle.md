@@ -105,6 +105,9 @@ Verified: database checks (the identity role cannot read or change anything else
 
 **Phase 4, hardening: done in the same commits.** Every lifecycle and login action is in the activity log or the operator's lifecycle history; runbook updated; test suites in `tools/local-demo`.
 
+**Phase 5, the owner as manager: done.** Migration `20261024000100_owner_manager.sql`: `kpi.retire_kpi`, `kpi.set_kpi_audience` (by key, across versions), `kpi.rename_unit`, `kpi.delete_unit` (only when nothing depends on it), `kpi.prepare_password_reset` (owner only; refuses anyone who also belongs to another organization). KPI activation is one shared helper used by "Approve & activate", "Add & activate" and "Create and activate". The identity API resets passwords.
+Verified: database checks, 33 API checks, 17 browser checks; all earlier suites still pass.
+
 **Left (not code):** Supabase mail service for password resets; the identity API's Vercel project and database login (runbook section 5).
 
 ## 10. Deliberately not built (to avoid mess)

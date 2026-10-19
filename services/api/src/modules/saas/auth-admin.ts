@@ -14,6 +14,8 @@ export type CreatedLogin = { status: "created"; id: string } | { status: "exists
 export interface AuthAdmin {
   /** Creates a confirmed account that must choose its own password at first sign-in. */
   createUser(email: string, password: string): Promise<CreatedLogin>;
+  /** Sets a new temporary password that must be changed at the next sign-in. */
+  resetPassword(id: string, password: string): Promise<void>;
   /** Best-effort removal, used to undo logins when the rest of a provisioning step fails. */
   deleteUser(id: string): Promise<void>;
 }
@@ -65,6 +67,21 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
       const id = typeof body === "object" && body !== null && "id" in body ? body.id : undefined;
       if (typeof id !== "string") throw new Error("The login service returned an unexpected answer.");
       return { status: "created", id };
+    },
+
+    async resetPassword(id, password) {
+      let response: Response;
+      try {
+        response = await call(`${base}/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          headers,
+          signal: signal(),
+          body: JSON.stringify({ password, user_metadata: { must_change_password: true } }),
+        });
+      } catch {
+        throw new Error("The login service did not answer.");
+      }
+      if (!response.ok) throw new Error(`The login service could not reset the password (status ${response.status}).`);
     },
 
     async deleteUser(id) {

@@ -58,8 +58,8 @@ export function CatalogBrowser({
   }, [data, query, domain, industry]);
 
   async function add(id: string) {
-    await change(`/catalog/${id}/add`, {});
-    setAdded((a) => [...a, id]);
+    const ok = await change(`/catalog/${id}/add`, { activate: w.organization.owner });
+    if (ok) setAdded((a) => [...a, id]);
   }
 
   return (
@@ -72,7 +72,10 @@ export function CatalogBrowser({
       </div>
       {open && (
         <p>
-          Each KPI comes with its formula. Add the ones you want; each is added as a draft that the owner activates.
+          Each KPI comes with its formula.{" "}
+          {w.organization.owner
+            ? "Add the ones you want and they are active at once. Then choose who sees each one under Your KPIs."
+            : "Add the ones you want; each is added as a draft that the owner activates."}
           Definitions vary between companies, so read the formula and check it matches how you work.
         </p>
       )}
@@ -168,7 +171,7 @@ export function CatalogBrowser({
                   <div>
                     {w.organization.owner ? (
                       <button type="button" disabled={have} onClick={() => void add(k.id)}>
-                        {have ? "Added" : "Add"}
+                        {have ? "Added" : w.organization.owner ? "Add & activate" : "Add as draft"}
                       </button>
                     ) : have ? (
                       <span className="saas-badge good">In use</span>

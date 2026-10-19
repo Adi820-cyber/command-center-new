@@ -62,6 +62,42 @@ export async function registerOwnerRoutes(app: FastifyInstance, options: SaasOpt
     }),
   );
 
+  // Stop using a KPI, or discard a draft. Its history stays.
+  app.post("/api/saas/:tenantId/kpis/:id/retire", async (req) =>
+    tenant(req, async (tx, t) => {
+      const { id } = input(z.object({ id: uuid }), req.params);
+      await tx.query("select kpi.retire_kpi($1::uuid,$2::uuid)", [t, id]);
+      return { ok: true };
+    }),
+  );
+
+  // Which roles see a KPI, decided from the KPI itself.
+  app.post("/api/saas/:tenantId/kpis/:id/audience", async (req) =>
+    tenant(req, async (tx, t) => {
+      const { id } = input(z.object({ id: uuid }), req.params);
+      const { roleIds } = input(z.strictObject({ roleIds: z.array(uuid).max(200) }), req.body);
+      await tx.query("select kpi.set_kpi_audience($1::uuid,$2::uuid,$3::uuid[])", [t, id, `{${[...new Set(roleIds)].join(",")}}`]);
+      return { ok: true };
+    }),
+  );
+
+  app.post("/api/saas/:tenantId/units/:id/rename", async (req) =>
+    tenant(req, async (tx, t) => {
+      const { id } = input(z.object({ id: uuid }), req.params);
+      const body = input(z.strictObject({ name: z.string().trim().min(1).max(120), kind: z.string().trim().min(1).max(60) }), req.body);
+      await tx.query("select kpi.rename_unit($1::uuid,$2::uuid,$3,$4)", [t, id, body.name, body.kind]);
+      return { ok: true };
+    }),
+  );
+
+  app.post("/api/saas/:tenantId/units/:id/delete", async (req) =>
+    tenant(req, async (tx, t) => {
+      const { id } = input(z.object({ id: uuid }), req.params);
+      await tx.query("select kpi.delete_unit($1::uuid,$2::uuid)", [t, id]);
+      return { ok: true };
+    }),
+  );
+
   // Gives back access to someone whose access was revoked. Roles they held are kept.
   app.post("/api/saas/:tenantId/members/:id/restore", async (req) =>
     tenant(req, async (tx, t, sub) => {

@@ -26,6 +26,7 @@ import { CatalogBrowser } from "./catalog-browser";
 import { CsvImport } from "./csv-import";
 import { TargetEditor } from "./target-editor";
 import { CustomKpiForm } from "./custom-kpi";
+import { KpiActions } from "./kpi-actions";
 import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
 import { initialOf, roleLabel, viewingAs } from "./identity";
@@ -378,9 +379,16 @@ type Props = {
 };
 function Kpis({ workspace: w, change }: Props) {
   const [search, setSearch] = useState("");
+  const [showRetired, setShowRetired] = useState(false);
+  const [editing, setEditing] = useState<SaasWorkspace["kpis"][number]>();
+  const startEdit = (kpi: SaasWorkspace["kpis"][number]) => {
+    setEditing(kpi);
+    setTimeout(() => document.getElementById("kpi-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
   const [limit, setLimit] = useState(25);
   const needle = search.trim().toLowerCase();
-  const matching = w.kpis.filter(
+  const retiredCount = w.kpis.filter((k) => k.state === "retired").length;
+  const matching = w.kpis.filter((k) => showRetired || k.state !== "retired").filter(
     (k) => !needle || `${k.name} ${k.description} ${k.catalogId ?? ""} ${k.state}`.toLowerCase().includes(needle),
   );
   async function measure(e: FormEvent<HTMLFormElement>) {
@@ -423,7 +431,7 @@ function Kpis({ workspace: w, change }: Props) {
                   <th>Unit</th>
                   <th>Target</th>
                   <th>Status</th>
-                  <th>Review</th>
+                  <th><span className="sr-only">Manage</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -451,15 +459,7 @@ function Kpis({ workspace: w, change }: Props) {
                     </td>
                     <td>{k.state}</td>
                     <td>
-                      {k.state === "draft" && w.organization.owner && (
-                        <button
-                          onClick={() =>
-                            void change(`/kpis/${k.id}/activate`, {})
-                          }
-                        >
-                          Approve & activate
-                        </button>
-                      )}
+                      <KpiActions w={w} kpi={k} change={change} onEdit={startEdit} />
                     </td>
                   </tr>
                 ))}
@@ -475,6 +475,12 @@ function Kpis({ workspace: w, change }: Props) {
           </div>
         )}
         {needle && matching.length === 0 && <p className="muted">No KPI matches that search.</p>}
+        {retiredCount > 0 && (
+          <label className="saas-checkbox" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <input type="checkbox" checked={showRetired} onChange={(e) => setShowRetired(e.target.checked)} style={{ width: "auto" }} />
+            Show {retiredCount} retired version{retiredCount === 1 ? "" : "s"}
+          </label>
+        )}
       </section>
       <CatalogBrowser workspace={w} change={change} startOpen={!w.kpis.length} />
       <div className="saas-columns">
@@ -508,7 +514,7 @@ function Kpis({ workspace: w, change }: Props) {
             <button>Add measure</button>
           </form>
         </section>
-        <CustomKpiForm workspace={w} change={change} />
+        <CustomKpiForm key={editing?.id ?? "new"} workspace={w} change={change} editing={editing} onDone={() => setEditing(undefined)} />
       </div>
     </>
   );

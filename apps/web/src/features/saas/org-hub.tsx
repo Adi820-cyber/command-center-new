@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { InviteMembersResponseSchema, roleDraftFromGrants, type Capability, type SaasWorkspace } from "@orbit/contracts";
+import { InviteMembersResponseSchema, ResetPasswordResponseSchema, roleDraftFromGrants, type Capability, type SaasWorkspace } from "@orbit/contracts";
 import { AccessPanel, type IssuedSet } from "./access-panel";
 import { request } from "./client";
 import { domainTitle } from "./domains";
@@ -438,6 +438,18 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
   // Creating logins needs the identity API. Without it, people are added by invitation link.
   const canCreateLogins = Boolean(import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
   const parsed = useMemo(() => parseEmails(emailsText), [emailsText]);
+  async function resetPassword(member: SaasWorkspace["members"][number]) {
+    const who = member.email ?? member.displayName;
+    if (!window.confirm(`Give ${who} a new temporary password? Their current password stops working.`)) return;
+    setLoginMessage("");
+    setIssued(undefined);
+    try {
+      const result = await request(`/api/identity/organizations/${tenant}/members/${member.id}/reset-password`, ResetPasswordResponseSchema, {});
+      setIssued({ title: `New temporary password for ${who}`, mode: "logins", people: [{ email: who, roleKeys: member.roleIds, temporaryPassword: result.temporaryPassword }] });
+    } catch (error) {
+      setLoginMessage(error instanceof Error ? error.message : "That did not work.");
+    }
+  }
   const roleName = new Map(w.roles.map((r) => [r.id, r.name]));
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   const sorted = [...w.members].sort((a, b) => Number(b.owner) - Number(a.owner) || Number(b.active) - Number(a.active) || (a.email ?? a.displayName).localeCompare(b.email ?? b.displayName));
@@ -507,6 +519,11 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
                             Change roles
                           </button>
                         )}
+                        {m.active && canCreateLogins && (
+                          <button type="button" className="secondary" onClick={() => void resetPassword(m)}>
+                            Reset password
+                          </button>
+                        )}
                         {m.active ? (
                           <button
                             type="button"
@@ -531,6 +548,8 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
             </tbody>
           </table>
         </div>
+        {loginMessage && <p role="alert" className="errors">{loginMessage}</p>}
+        {issued && <AccessPanel set={issued} roleName={(key) => roleName.get(key) ?? key} />}
       </section>
 
       {canCreateLogins && (
@@ -581,12 +600,10 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
                 ))}
               </ul>
             )}
-            {loginMessage && <p role="alert" className="errors">{loginMessage}</p>}
             <button disabled={loginBusy || parsed.emails.length === 0 || parsed.errors.length > 0 || loginRoles.length === 0}>
               {loginBusy ? "Creating…" : `Create ${parsed.emails.length || ""} login${parsed.emails.length === 1 ? "" : "s"}`.replace("  ", " ")}
             </button>
           </form>
-          {issued && <AccessPanel set={issued} roleName={(key) => roleName.get(key) ?? key} />}
         </section>
       )}
 
@@ -633,6 +650,7 @@ function Units({ w, change }: { w: SaasWorkspace; change: Change }) {
   const [kind, setKind] = useState("");
   const root = w.units.find((u) => u.parentId === null);
   const [parentId, setParentId] = useState(root?.id ?? "");
+  const [renaming, setRenaming] = useState<{ id: string; name: string; kind: string }>();
   const tree = useMemo(() => {
     const out: { id: string; name: string; kind: string; depth: number }[] = [];
     const walk = (parent: string | null, depth: number) => {
@@ -653,7 +671,41 @@ function Units({ w, change }: { w: SaasWorkspace; change: Change }) {
         <ul className="unit-tree">
           {tree.map((u) => (
             <li key={u.id} style={{ paddingLeft: u.depth * 22 }}>
-              <strong>{u.name}</strong> <small className="muted">{u.kind}</small>
+              {renaming?.id === u.id ? (
+                <span className="unit-edit">
+                  <input aria-label="Unit name" value={renaming.name} onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} maxLength={120} />
+                  <input aria-label="Unit type" value={renaming.kind} onChange={(e) => setRenaming({ ...renaming, kind: e.target.value })} maxLength={60} />
+                  <button
+                    type="button"
+                    disabled={!renaming.name.trim() || !renaming.kind.trim()}
+                    onClick={() => void change(`/units/${u.id}/rename`, { name: renaming.name.trim(), kind: renaming.kind.trim() }).then((ok) => ok && setRenaming(undefined))}
+                  >
+                    Save
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setRenaming(undefined)}>Cancel</button>
+                </span>
+              ) : (
+                <span className="unit-row">
+                  <span>
+                    <strong>{u.name}</strong> <small className="muted">{u.kind}</small>
+                  </span>
+                  <span className="unit-actions">
+                    <button type="button" className="secondary" onClick={() => setRenaming({ id: u.id, name: u.name, kind: u.kind })}>Rename</button>
+                    {u.depth > 0 && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          if (window.confirm(`Delete the unit “${u.name}”? This is only possible while nothing depends on it.`))
+                            void change(`/units/${u.id}/delete`, {});
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </span>
+                </span>
+              )}
             </li>
           ))}
         </ul>

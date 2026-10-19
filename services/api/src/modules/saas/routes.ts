@@ -23,7 +23,7 @@ import {
 import { ApiError } from "../../plugins/errors.ts";
 import { measureKeys } from "./engine.ts";
 import { recalculateAfterApproval } from "./calculation.ts";
-import { audit, hash, input, inSubject, makeRunners, owner, permit, uuid, type SaasOptions } from "./helpers.ts";
+import { activateDraft, audit, hash, input, inSubject, makeRunners, owner, permit, uuid, type SaasOptions } from "./helpers.ts";
 import { loadWorkspace } from "./workspace.ts";
 import { registerV2Routes } from "./v2.ts";
 import { registerOwnerRoutes } from "./owner.ts";
@@ -166,7 +166,9 @@ export async function registerSaasRoutes(
   app.post("/api/saas/:tenantId/kpis", async (req) =>
     tenant(req, async (tx, t, sub) => {
       await permit(tx, t, "configure");
-      const b = input(NewKpiSchema, req.body);
+      // The owner approves KPIs, so they may save and activate in one step.
+      const { activate, ...rest } = input(z.object({ activate: z.boolean().default(false) }).passthrough(), req.body);
+      const b = input(NewKpiSchema, rest);
       const available = await tx.query(
         "select key,unit from kpi.measures where tenant_id=$1",
         [t],
@@ -220,28 +222,14 @@ export async function registerSaasRoutes(
         ],
       );
       await audit(tx, t, sub, "kpi.drafted");
+      if (activate) await activateDraft(tx, t, uuid.parse(row?.id), sub);
       return row;
     }),
   );
   app.post("/api/saas/:tenantId/kpis/:id/activate", async (req) =>
     tenant(req, async (tx, t, sub) => {
-      await owner(tx, t);
       const { id } = input(z.object({ id: uuid }), req.params);
-      const [draft] = await tx.query(
-        "select key from kpi.definitions where tenant_id=$1 and id=$2 and state='draft'",
-        [t, id],
-      );
-      if (!draft)
-        throw new ApiError("conflict", "Only a draft KPI can be activated.");
-      await tx.query(
-        "update kpi.definitions set state='retired' where tenant_id=$1 and key=$2 and state='active'",
-        [t, String(draft.key)],
-      );
-      await tx.query(
-        "update kpi.definitions set state='active',approved_by=$3 where tenant_id=$1 and id=$2",
-        [t, id, sub],
-      );
-      await audit(tx, t, sub, "kpi.activated", id);
+      await activateDraft(tx, t, id, sub);
       return { ok: true };
     }),
   );

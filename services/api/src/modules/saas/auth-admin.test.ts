@@ -83,4 +83,15 @@ describe("createAuthAdmin", () => {
     expect(calls).toEqual(["DELETE https://project.supabase.co/auth/v1/admin/users/abc"]);
     await expect(admin(async () => { throw new Error("down"); }).deleteUser("abc")).resolves.toBeUndefined();
   });
+
+  it("resets a password with the must-change flag, and never leaks the key", async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    await admin(async (url, init) => { seen = { url: urlOf(url), init }; return reply(200, {}); }).resetPassword("abc", "Ab3d-Efg4-Hjk5");
+    expect(seen?.url).toBe("https://project.supabase.co/auth/v1/admin/users/abc");
+    expect(seen?.init?.method).toBe("PUT");
+    expect(JSON.parse(bodyOf(seen?.init))).toEqual({ password: "Ab3d-Efg4-Hjk5", user_metadata: { must_change_password: true } });
+    const failed = await admin(async () => reply(500, { msg: "sb_secret_TESTKEY" })).resetPassword("abc", "pw").catch((e: Error) => e);
+    expect((failed as Error).message).toMatch(/status 500/);
+    expect((failed as Error).message).not.toContain("sb_secret_TESTKEY");
+  });
 });
