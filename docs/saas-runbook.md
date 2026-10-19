@@ -34,7 +34,7 @@ The second migration creates the `kpi_catalog` schema, which is empty until the 
 npx supabase --workdir database db query --linked -f catalog-seed.sql
 ```
 
-Check the counts: 592 KPIs, 521 measures, 20 templates. Re-run the seed after the catalog changes (see [kpi-catalog.md](kpi-catalog.md)). Organizations that already used a template keep their own copy, so reseeding never changes a customer's KPIs.
+Check the counts: 623 KPIs, 554 measures, 21 templates. Re-run the seed after the catalog changes (see [kpi-catalog.md](kpi-catalog.md)). Organizations that already used a template keep their own copy, so reseeding never changes a customer's KPIs.
 
 ## 3. Create two restricted database login roles
 

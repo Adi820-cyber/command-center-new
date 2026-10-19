@@ -21,6 +21,7 @@ import { logistics } from "./domains/logistics.ts";
 import { professionalServices } from "./domains/professional-services.ts";
 import { realEstate } from "./domains/real-estate.ts";
 import { agriculture, energy, nonprofit, telecom } from "./domains/other-industries.ts";
+import { digitalAgency } from "./domains/digital-agency.ts";
 import type { DomainSource } from "./types.ts";
 
 export * from "./types.ts";
@@ -54,6 +55,7 @@ export const DOMAINS: readonly DomainSource[] = [
   nonprofit,
   energy,
   agriculture,
+  ...digitalAgency,
 ];
 
 export const CATALOG = buildCatalog(DOMAINS);

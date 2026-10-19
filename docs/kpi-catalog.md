@@ -4,9 +4,9 @@ The catalog is the set of ready-made KPIs every organization can start from. It 
 
 ## What is in it
 
-- **592 KPIs** in 25 domains: finance, sales, marketing, customers and support, HR, operations, supply chain, IT and engineering, quality and safety, and industry sets for hospitals, diagnostic labs, retail and e-commerce, manufacturing, software, professional services, banking, insurance, hotels, education, logistics, real estate and construction, telecom, non-profit, energy and agriculture.
-- **521 measures**: the inputs the KPIs use. One measure is shared by every KPI that needs it, so a CSV never asks for the same figure twice.
-- **20 templates** with 9 roles each (a few more for specialist roles): executive, operations, finance, commercial, people, unit manager, data contributor, data reviewer, and an industry specialist where one makes sense. A role lists the KPIs its holders see. The data-contributor role sees none and can only upload. The data-reviewer role approves.
+- **623 KPIs** in 32 domains: finance, sales, marketing, customers and support, HR, operations, supply chain, IT and engineering, quality and safety, and industry sets for hospitals, diagnostic labs, retail and e-commerce, manufacturing, software, professional services, banking, insurance, hotels, education, logistics, real estate and construction, telecom, non-profit, energy and agriculture, plus seven for digital marketing agencies (revenue and profitability, clients and retention, growth, delivery, quality, operations, and clients' social results).
+- **554 measures**: the inputs the KPIs use. One measure is shared by every KPI that needs it, so a CSV never asks for the same figure twice.
+- **21 templates.** Twenty have 9 roles each (a few more for specialist roles): executive, operations, finance, commercial, people, unit manager, data contributor, data reviewer, and an industry specialist where one makes sense. The "Digital marketing agency" template has its own leadership roles (CEO, CTO, account manager, operations) plus the two data roles; the account manager and operations roles do not see margins. A role lists the KPIs its holders see. The data-contributor role sees none and can only upload. The data-reviewer role approves.
 
 ## Read this before relying on a definition
 
@@ -32,6 +32,7 @@ Rules the system enforces:
 - **Exact arithmetic.** No floating-point drift; results are rounded once, to ten decimals.
 - **Missing is never zero.** If an input was not reported, the result is "missing" and names what is needed. A zero denominator gives "not applicable".
 - **Units are checked.** Adding currency to a count is refused. A KPI's unit is worked out from its formula, so `revenue / tests` is currency per item.
+- **Whole-organization KPIs.** A KPI marked `top` is calculated only for the unit without a parent (for example an agency's gross margin after payroll, or revenue against the monthly target), so clients or branches beneath it never show it as waiting for the top-level input.
 - **Parents add up their children.** A parent unit uses its own figure if it has one, otherwise the sum of the units beneath it. Ratios are calculated from the summed inputs, never by averaging children's ratios.
 - **Periods.** "Previous" for a whole calendar month is the previous calendar month; for any other span it is the same number of days earlier. When an earlier period is approved later, results that compare against it are recalculated.
 
@@ -42,7 +43,10 @@ Edit the text in `packages/kpi-catalog/src/domains/*.ts`. One measure per line, 
 ```
 revenue | Revenue | currency | Net revenue recognised in the period.
 FIN-003 | Gross margin | pct(revenue - cogs, revenue) | higher | Share of revenue left after the direct cost of delivery.
+AGY-002 | Agency gross margin | pct(revenue - payroll_cost - vendor_cost, revenue) | higher | Revenue left after payroll and vendor bills. | top
 ```
+
+A measure line may end in `| no-rollup` (a parent never adds it up from its children). A KPI line may end in `| top` (measured for the whole organization only).
 
 Then:
 

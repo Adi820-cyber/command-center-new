@@ -29,6 +29,8 @@ const PLAIN: Record<string, string> = {
   tonnes: " t",
   litres: " L",
   years: " years",
+  points: " points",
+  rounds: " rounds",
 };
 const NUMERATOR: Record<string, string> = {
   currency: "",
@@ -45,6 +47,8 @@ const NUMERATOR: Record<string, string> = {
   litres: "L",
   years: "years",
   acres: "acres",
+  points: "points",
+  rounds: "rounds",
 };
 const DENOMINATOR: Record<string, string> = {
   count: "item",

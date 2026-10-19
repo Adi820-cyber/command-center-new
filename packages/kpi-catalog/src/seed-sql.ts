@@ -30,18 +30,18 @@ export function seedSql(): string {
   );
 
   out.push(
-    "insert into kpi_catalog.kpis(id,name,description,domain,industries,formula,formula_text,unit,direction,measures,needs_history,sources) values",
+    "insert into kpi_catalog.kpis(id,name,description,domain,industries,formula,formula_text,unit,direction,measures,needs_history,sources,scope) values",
   );
   out.push(
     CATALOG.kpis
       .map(
         (k) =>
-          `(${text(k.id)},${text(k.name)},${text(k.description)},${text(k.domain)},${list(k.industries)},${text(JSON.stringify(k.formula))}::jsonb,${text(k.formulaText)},${text(k.unit)},${text(k.direction)},${list(k.measures)},${k.needsHistory},${list(k.sources)})`,
+          `(${text(k.id)},${text(k.name)},${text(k.description)},${text(k.domain)},${list(k.industries)},${text(JSON.stringify(k.formula))}::jsonb,${text(k.formulaText)},${text(k.unit)},${text(k.direction)},${list(k.measures)},${k.needsHistory},${list(k.sources)},${text(k.scope)})`,
       )
       .join(",\n"),
   );
   out.push(
-    "on conflict (id) do update set name=excluded.name, description=excluded.description, domain=excluded.domain, industries=excluded.industries, formula=excluded.formula, formula_text=excluded.formula_text, unit=excluded.unit, direction=excluded.direction, measures=excluded.measures, needs_history=excluded.needs_history, sources=excluded.sources;",
+    "on conflict (id) do update set name=excluded.name, description=excluded.description, domain=excluded.domain, industries=excluded.industries, formula=excluded.formula, formula_text=excluded.formula_text, unit=excluded.unit, direction=excluded.direction, measures=excluded.measures, needs_history=excluded.needs_history, sources=excluded.sources, scope=excluded.scope;",
   );
 
   out.push(

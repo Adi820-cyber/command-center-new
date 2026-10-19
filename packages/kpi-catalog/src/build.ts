@@ -67,11 +67,12 @@ export function buildCatalog(domains: readonly DomainSource[]): BuiltCatalog {
   const unitOf = new Map([...measures].map(([key, m]) => [key, m.unit]));
   for (const domain of domains) {
     for (const line of lines(domain.kpis)) {
-      const [id = "", name = "", formulaText = "", direction = "", description = ""] = line
+      const [id = "", name = "", formulaText = "", direction = "", description = "", flag = ""] = line
         .split("|")
         .map((part) => part.trim());
       const where = `${id || "(no id)"} ${name}`;
       if (!ID.test(id)) errors.push(`${where}: id must look like FIN-001.`);
+      if (flag && flag !== "top") errors.push(`${where}: unknown flag "${flag}".`);
       if (ids.has(id)) errors.push(`${where}: duplicate id.`);
       ids.add(id);
       if (!name) errors.push(`${where}: missing name.`);
@@ -99,6 +100,7 @@ export function buildCatalog(domains: readonly DomainSource[]): BuiltCatalog {
           measures: used,
           needsHistory: formulaPeriods(formula).size > 0,
           sources: domain.sources,
+          scope: flag === "top" ? "top" : "all",
         });
       } catch (error) {
         errors.push(`${where}: ${error instanceof Error ? error.message : String(error)}`);

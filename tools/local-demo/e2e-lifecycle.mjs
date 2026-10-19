@@ -109,7 +109,7 @@ ok(rowsFor(C.id) === keepersBefore, "the other organization is untouched");
 ok(!(mail("doomed") in registry()) && !(mail("temp") in registry()), "the deleted organization's own logins were removed");
 ok(mail("shared") in registry() && (await token(mail("shared"), sharedPw)).access_token, "the shared login, which belongs to another organization, was kept and still works");
 ok(!(await list()).some((o) => o.id === D.id), "the operator's list no longer shows it");
-ok(sql(`select string_agg(event, ',' order by at) from kpi_control.lifecycle where tenant_id='${D.id}'`) === "created,activated,deleted,purged", "the history of what happened is kept after deletion");
+ok(sql(`select string_agg(event, ',' order by at, event <> 'created') from kpi_control.lifecycle where tenant_id='${D.id}'`) === "created,activated,deleted,purged", "the history of what happened is kept after deletion");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

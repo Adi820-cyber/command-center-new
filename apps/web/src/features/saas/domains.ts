@@ -25,6 +25,13 @@ export const DOMAIN_TITLES: Record<string, string> = {
   nonprofit: "Non-profit",
   energy: "Energy and utilities",
   agriculture: "Agriculture",
+  agency_finance: "Agency revenue and profitability",
+  agency_clients: "Clients and retention",
+  agency_growth: "Growth and pipeline",
+  agency_delivery: "Delivery",
+  agency_quality: "Quality and client outcomes",
+  agency_operations: "Agency operations and cash",
+  agency_client_results: "Client results (social media)",
 };
 
 export const domainTitle = (domain: string | null | undefined): string =>

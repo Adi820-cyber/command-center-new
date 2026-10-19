@@ -80,3 +80,6 @@ __pycache__/
 # Local demo stack: generated signing key
 tools/local-demo/key.json
 tools/local-demo/users.json
+
+# Client data and set-up scripts (never committed)
+beingSocial/

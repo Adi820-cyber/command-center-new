@@ -28,7 +28,8 @@ const SHIFT: Record<Exclude<PeriodRef, "current">, "previous" | "year_ago"> = {
  * Inputs come from `kpi.rollup_inputs`: the unit's own approved figures, or the
  * sum of the units beneath it. KPIs that compare with an earlier period also
  * read that period's figures. A KPI none of whose inputs were reported is
- * skipped rather than filled with "missing" noise.
+ * skipped rather than filled with "missing" noise, and so is a KPI scoped to
+ * the whole organization ("top") when the unit has a parent.
  */
 async function calculateUnit(
   tx: Tx,
@@ -37,6 +38,7 @@ async function calculateUnit(
   target: string,
   period: Period,
   definitions: readonly Record<string, unknown>[],
+  isTop: boolean,
 ): Promise<number> {
   const load = async (p: Period): Promise<Values> => {
     const rows = await tx.query(
@@ -70,6 +72,7 @@ async function calculateUnit(
   const run = randomUUID();
   let stored = 0;
   for (const def of definitions) {
+    if (def.scope === "top" && !isTop) continue;
     const formula = FormulaSchema.parse(def.formula);
     const keys = formulaMeasureKeys(formula);
     if (!keys.some((key) => current.has(key))) continue;
@@ -130,16 +133,24 @@ export async function recalculateAfterApproval(
   period: Period,
 ): Promise<{ calculated: number; units: number }> {
   const definitions = await tx.query(
-    "select id,formula,target,direction from kpi.calculation_definitions($1::uuid,$2::uuid)",
+    "select id,formula,target,direction,scope from kpi.calculation_definitions($1::uuid,$2::uuid)",
     [tenant, source],
   );
   const chain = (await tx.query("select kpi.unit_chain($1::uuid,$2::uuid) as id", [tenant, source])).map(
     (row) => String(row.id),
   );
+  const tops = new Set(
+    (
+      await tx.query("select id from kpi.units where tenant_id=$1 and id = any($2::uuid[]) and parent_id is null", [
+        tenant,
+        `{${chain.join(",")}}`,
+      ])
+    ).map((row) => String(row.id)),
+  );
   const periods = [period, shiftPeriod(period, "next"), shiftPeriod(period, "year_after")];
   let calculated = 0;
   for (const target of chain)
     for (const p of periods)
-      calculated += await calculateUnit(tx, tenant, source, target, p, definitions);
+      calculated += await calculateUnit(tx, tenant, source, target, p, definitions, tops.has(target));
   return { calculated, units: chain.length };
 }

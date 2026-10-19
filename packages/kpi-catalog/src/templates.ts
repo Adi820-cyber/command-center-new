@@ -340,10 +340,72 @@ const SPECS: Spec[] = [
   },
 ];
 
-export const TEMPLATES: readonly CatalogTemplate[] = SPECS.map((spec) => ({
-  id: spec.id,
-  name: spec.name,
-  industry: spec.industry,
-  description: spec.description,
-  roles: roles(spec),
-}));
+// Templates whose leadership roles do not follow the executive / operations /
+// finance pattern. They still get the two data roles.
+const a = (...numbers: number[]) => k("AGY", ...numbers);
+// One order for every role, so each dashboard opens with revenue and profitability.
+const AGENCY_ALL = a(1, 9, 2, 13, 34, 8, 3, 10, 11, 12, 14, 4, 5, 6, 7, 20, 21, 30, 22, 23, 24, 25, 31, 32, 33, 35, 50, 51, 52, 53, 54);
+const agency = (...numbers: number[]) => AGENCY_ALL.filter((id) => a(...numbers).includes(id));
+const CUSTOM: CatalogTemplate[] = [
+  {
+    id: "digital-marketing-agency",
+    name: "Digital marketing agency",
+    industry: "digital_marketing",
+    description: "Retainer and project clients: revenue, margin, retention, pipeline, on-time delivery, approvals, utilisation, over-servicing and clients' social results.",
+    roles: [
+      {
+        key: "ceo",
+        name: "CEO (agency growth)",
+        description: "Revenue against target, margin, clients won and the pipeline, with every client visible.",
+        capabilities: ["act", "approve"],
+        kpis: AGENCY_ALL,
+      },
+      {
+        key: "cto",
+        name: "CTO (retention and upsell)",
+        description: "Client retention, net revenue retention, upsell, client margin and retainers at risk. Sets the monthly targets.",
+        capabilities: ["act", "approve"],
+        kpis: AGENCY_ALL,
+      },
+      {
+        key: "account_manager",
+        name: "Account manager (delivery and client results)",
+        description: "On-time delivery, fulfilment, approvals, revisions, client goals and satisfaction. Does not see margins or vendor cost.",
+        capabilities: ["act", "submit"],
+        kpis: agency(20, 21, 22, 23, 24, 25, 9, 3, 10, 14, 30, 31, 50, 51, 52, 53, 54),
+      },
+      {
+        key: "operations",
+        name: "Operations (capacity and collections)",
+        description: "Turnaround, onboarding, utilisation, over-servicing, vendor cost and advance collection. Does not see margins.",
+        capabilities: ["act", "submit"],
+        kpis: agency(30, 31, 32, 33, 34, 35, 20, 21, 22, 23, 3, 14),
+      },
+      {
+        key: "data_contributor",
+        name: "Data contributor",
+        description: "Uploads the monthly figures. Does not see results.",
+        capabilities: ["submit"],
+        kpis: [],
+      },
+      {
+        key: "data_reviewer",
+        name: "Data reviewer (approver)",
+        description: "Checks and approves submitted figures, which publishes the results.",
+        capabilities: ["approve"],
+        kpis: agency(9, 3, 10, 14, 20, 21, 22, 23, 24, 25, 30, 31, 33, 35),
+      },
+    ],
+  },
+];
+
+export const TEMPLATES: readonly CatalogTemplate[] = [
+  ...SPECS.map((spec) => ({
+    id: spec.id,
+    name: spec.name,
+    industry: spec.industry,
+    description: spec.description,
+    roles: roles(spec),
+  })),
+  ...CUSTOM,
+];

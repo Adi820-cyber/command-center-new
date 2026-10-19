@@ -34,6 +34,8 @@ export interface CatalogKpi {
   needsHistory: boolean;
   /** Pages the definition was checked against. */
   sources: readonly string[];
+  /** "top": calculated only for the whole organization (the unit without a parent). */
+  scope: "all" | "top";
 }
 
 export interface DomainSource {
@@ -49,7 +51,8 @@ export interface DomainSource {
    */
   measures: string;
   /**
-   * One KPI per line: `ID | name | formula | direction | description`.
+   * One KPI per line: `ID | name | formula | direction | description [| top]`.
+   * `top` marks a KPI measured for the whole organization only.
    */
   kpis: string;
 }
