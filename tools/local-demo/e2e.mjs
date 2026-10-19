@@ -1,5 +1,4 @@
-// End-to-end check of the KPI platform against the LOCAL demo stack only (see README.md).
-// Needs: the stand-in login (auth-server.mjs), the customer API on :3100 and the control API on :3101.
+// End-to-end check of the v2 flow against the LOCAL demo stack only.
 import { randomUUID } from "node:crypto";
 const AUTH = "http://127.0.0.1:54321/auth/v1", API = "http://localhost:3100", CTL = "http://localhost:3101";
 let pass = 0, fail = 0;
@@ -24,7 +23,7 @@ ok(lab && lab.roles.length === 9 && lab.kpiCount > 20, `diagnostics template has
 // 2. provision with members and roles
 const people = { owner: mail("owner"), entry: mail("entry"), review: mail("review"), ceo: mail("ceo"), coo: mail("coo") };
 const org = await call(CTL, op, "POST", "/api/control/organizations", {
-  name: `Medilab ${stamp}`, ownerEmail: people.owner, templateId: "diagnostics-lab",
+  name: `Medilab ${stamp}`, ownerEmailVerified: true, ownerEmail: people.owner, templateId: "diagnostics-lab",
   members: [
     { email: people.entry, roleKeys: ["data_contributor"] },
     { email: people.review, roleKeys: ["data_reviewer"] },
@@ -32,19 +31,19 @@ const org = await call(CTL, op, "POST", "/api/control/organizations", {
     { email: people.coo, roleKeys: ["operations", "quality_head"] },
   ],
 });
-ok(org.id && org.token && org.members.length === 4, "organization provisioned with owner and 4 members");
-ok(new Set([org.token, ...org.members.map((m) => m.token)]).size === 5, "every invitation has its own token");
-const dup = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmail: mail("o2"), templateId: "diagnostics-lab", members: [{ email: mail("d"), roleKeys: ["executive"] }, { email: mail("d"), roleKeys: ["executive"] }] });
+ok(org.id && org.mode === "invitations" && org.owner.token && org.members.length === 4, "organization provisioned with owner and 4 members");
+ok(new Set([org.owner.token, ...org.members.map((m) => m.token)]).size === 5, "every invitation has its own token");
+const dup = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmailVerified: true, ownerEmail: mail("o2"), templateId: "diagnostics-lab", members: [{ email: mail("d"), roleKeys: ["executive"] }, { email: mail("d"), roleKeys: ["executive"] }] });
 ok(dup.status === 400, "duplicate member email is refused");
-const badRole = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmail: mail("o3"), templateId: "diagnostics-lab", members: [{ email: mail("e"), roleKeys: ["no_such_role"] }] });
+const badRole = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmailVerified: true, ownerEmail: mail("o3"), templateId: "diagnostics-lab", members: [{ email: mail("e"), roleKeys: ["no_such_role"] }] });
 ok(badRole.status === 400, "unknown role is refused");
-const noTemplate = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmail: mail("o4"), members: [{ email: mail("f"), roleKeys: ["executive"] }] });
+const noTemplate = await raw(CTL, op, "POST", "/api/control/organizations", { name: "X", ownerEmailVerified: true, ownerEmail: mail("o4"), members: [{ email: mail("f"), roleKeys: ["executive"] }] });
 ok(noTemplate.status === 400, "members without a template are refused");
 
 // 3. everyone joins
 const t = org.id;
 const owner = await login(people.owner), entry = await login(people.entry), review = await login(people.review), ceo = await login(people.ceo), coo = await login(people.coo);
-await call(API, owner, "POST", "/api/saas/invitations/accept", { token: org.token });
+await call(API, owner, "POST", "/api/saas/invitations/accept", { token: org.owner.token });
 const byEmail = Object.fromEntries(org.members.map((m) => [m.email, m.token]));
 await call(API, entry, "POST", "/api/saas/invitations/accept", { token: byEmail[people.entry] });
 await call(API, review, "POST", "/api/saas/invitations/accept", { token: byEmail[people.review] });

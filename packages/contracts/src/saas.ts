@@ -118,10 +118,15 @@ export const CalculationValueSchema = z.discriminatedUnion("status", [
   }),
 ]);
 export type CalculationValue = z.infer<typeof CalculationValueSchema>;
+export const ORGANIZATION_STATUSES = ["pending", "active", "suspended", "deleted"] as const;
+export const OrganizationStatusSchema = z.enum(ORGANIZATION_STATUSES);
+export type OrganizationStatus = z.infer<typeof OrganizationStatusSchema>;
 export const TenantSummarySchema = z.strictObject({
   id: z.uuid(),
   name: z.string(),
   owner: z.boolean(),
+  /** Only an active organization can be worked in. */
+  status: OrganizationStatusSchema.default("active"),
 });
 export const TenantListSchema = z.array(TenantSummarySchema);
 export const MeasureSchema = NewMeasureSchema.extend({
@@ -143,6 +148,13 @@ export const KpiDefinitionSchema = NewKpiSchema.extend({
 export const WorkspaceSchema = z.strictObject({
   organization: TenantSummarySchema,
   subject: z.uuid(),
+  /** The signed-in person's own standing in this organization. */
+  me: z
+    .strictObject({
+      owner: z.boolean(),
+      roles: z.array(z.strictObject({ id: z.uuid(), name: z.string() })),
+    })
+    .default({ owner: false, roles: [] }),
   units: z.array(NewUnitSchema.extend({ id: z.uuid() })),
   measures: z.array(MeasureSchema),
   kpis: z.array(KpiDefinitionSchema),
@@ -253,6 +265,13 @@ export const ControlOrganizationListSchema = z.array(
     name: z.string(),
     /** The template the organisation was created from, if any. */
     templateId: z.string().nullable(),
+    status: OrganizationStatusSchema,
+    statusChangedAt: z.string(),
+    /** For a deleted organization: when it may be permanently deleted. */
+    purgeAfter: z.string().nullable(),
+    ownerEmail: z.string().nullable(),
+    /** When the operator stated that the owner's email was verified. */
+    ownerEmailVerifiedAt: z.string().nullable(),
   }),
 );
 export const SettingsSchema = z.strictObject({

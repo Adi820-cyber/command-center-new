@@ -65,7 +65,7 @@ values ('<reviewed-auth-user-uuid>');
 
 The operator console can provision organization metadata and send configuration proposals. It has no ordinary query permissions for customer KPI inputs, results, actions, or tenant uploads. This is account-level separation; it does not make a managed-hosting provider technically incapable of accessing plaintext.
 
-## 5. Deploy two API processes and one web app
+## 5. Deploy three API processes and one web app
 
 Use separate API services built from `services/api`:
 
@@ -75,6 +75,16 @@ Use separate API services built from `services/api`:
 - Set `KPI_DATABASE_URL` to the `cc_kpi_data_login` connection only.
 - Leave `CONTROL_DATABASE_URL` empty.
 - Set `VITE_API_BASE_URL` in the web build to this service's HTTPS origin.
+
+### Identity API (owners create logins)
+
+The same code as the other two, started with only:
+
+- `SUPABASE_URL`, `ALLOWED_ORIGINS` (the web origin), `PORT`
+- `IDENTITY_DATABASE_URL`: a login that is a member of `kpi_identity_app` and nothing else (create it like the others: `create role cc_kpi_identity_login login noinherit nosuperuser nobypassrls password '...'; grant kpi_identity_app to cc_kpi_identity_login;`)
+- `SUPABASE_SECRET_KEY` (sensitive)
+
+Set `VITE_IDENTITY_API_BASE_URL` in the web build to its HTTPS origin. Without it, owners add people by invitation link only. The database login can ask whether someone owns an organization and add people to it; it cannot read any table. The API refuses to start with more than one database credential, and refuses the secret key next to `KPI_DATABASE_URL`.
 
 ### Platform control API
 
@@ -115,6 +125,19 @@ In the control console (`/operator`):
 **Temporary passwords are only as private as the way you send them.** Send each person their own details, not a list. The `must change password` flag is a prompt in the web app, not a server-side lock: it is stored in the user's own metadata, so a technical user could skip it. Treat the temporary password as a short-lived secret and ask people to sign in soon.
 
 The console creates the organization, its roles and the invitations through database functions that return only ids. It cannot read the organization's figures.
+
+### Organization lifecycle (operator)
+
+In `/operator`, every organization shows its status and owner email (with when the email was verified). Actions:
+
+| Status | Actions |
+|---|---|
+| pending | Activate, Delete |
+| active | Suspend, Delete |
+| suspended | Activate, Delete |
+| deleted | Restore (back to suspended), Delete permanently after 30 days |
+
+Delete and Delete permanently ask for the organization's exact name. Anyone in an organization that is not active is refused by the database and sees a page saying it is pending, suspended or removed. Permanent deletion erases the organization's data and the logins that belong to no other organization; the history of what happened stays in the operator's lifecycle log.
 
 ### What the owner manages
 

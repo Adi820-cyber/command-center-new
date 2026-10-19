@@ -78,3 +78,16 @@ describe("prepareLogins", () => {
     expect(() => assertDistinct([{ email: "a@b.co" }, { email: "c@d.co" }])).not.toThrow();
   });
 });
+
+describe("roles in the database JSON", () => {
+  it("sends role ids for an owner's people and template keys for an operator's, never both", async () => {
+    const { admin } = fakeAdmin();
+    const byIds = await prepareLogins([{ email: "a@b.co", roleKeys: [], roleIds: ["00000000-0000-4000-8000-000000000009"] }], admin);
+    expect(JSON.parse(byIds.json)[0]).toMatchObject({ roleIds: ["00000000-0000-4000-8000-000000000009"] });
+    expect("roleKeys" in JSON.parse(byIds.json)[0]).toBe(false);
+    expect(byIds.people[0]!.roleKeys).toEqual(["00000000-0000-4000-8000-000000000009"]);
+    const byKeys = await prepareLogins([{ email: "c@d.co", roleKeys: ["executive"] }], admin);
+    expect(JSON.parse(byKeys.json)[0]).toMatchObject({ roleKeys: ["executive"] });
+    expect("roleIds" in JSON.parse(byKeys.json)[0]).toBe(false);
+  });
+});

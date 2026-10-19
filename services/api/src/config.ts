@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   DATABASE_URL: optional(z.string().min(1)),
   KPI_DATABASE_URL: optional(z.string().min(1)),
   CONTROL_DATABASE_URL: optional(z.string().min(1)),
+  /** The identity API: lets an owner create logins for their own people. Holds the secret key. */
+  IDENTITY_DATABASE_URL: optional(z.string().min(1)),
   /** Supabase secret key. Control API only: it lets the operator create logins for the people they add. */
   SUPABASE_SECRET_KEY: optional(z.string().min(1)),
   ALLOWED_ORIGINS: z.string().default(''),
@@ -51,6 +53,7 @@ export interface ApiConfig {
   databaseUrl: string | undefined;
   kpiDatabaseUrl: string | undefined;
   controlDatabaseUrl: string | undefined;
+  identityDatabaseUrl: string | undefined;
   /** Present only on the control API. Absent means people are added by invitation link. */
   supabaseSecretKey: string | undefined;
   supabaseUrl: string;
@@ -118,8 +121,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error(`Invalid or missing API environment variables: ${names.join(', ')}`);
   }
   const vars = parsed.data;
-  if (vars.KPI_DATABASE_URL && vars.CONTROL_DATABASE_URL) {
-    throw new Error('Deploy the customer API and control API separately; configure only one database credential in each process.');
+  if ([vars.KPI_DATABASE_URL, vars.CONTROL_DATABASE_URL, vars.IDENTITY_DATABASE_URL].filter(Boolean).length > 1) {
+    throw new Error('Deploy the customer API, control API and identity API separately; configure only one database credential in each process.');
   }
   if (vars.SUPABASE_SECRET_KEY && vars.KPI_DATABASE_URL) {
     // The customer API reads customer data. It must never hold a key that can create or alter logins.
@@ -135,6 +138,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return {
     kpiDatabaseUrl: vars.KPI_DATABASE_URL,
     controlDatabaseUrl: vars.CONTROL_DATABASE_URL,
+    identityDatabaseUrl: vars.IDENTITY_DATABASE_URL,
     supabaseSecretKey: vars.SUPABASE_SECRET_KEY,
     supabaseUrl: base,
     issuer: `${base}/auth/v1`,

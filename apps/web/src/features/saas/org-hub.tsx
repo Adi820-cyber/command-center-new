@@ -1,6 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { roleDraftFromGrants, type Capability, type SaasWorkspace } from "@orbit/contracts";
+import { InviteMembersResponseSchema, roleDraftFromGrants, type Capability, type SaasWorkspace } from "@orbit/contracts";
+import { AccessPanel, type IssuedSet } from "./access-panel";
+import { request } from "./client";
 import { domainTitle } from "./domains";
+import { parseEmails } from "./emails";
 
 type Change = (path: string, body: unknown) => Promise<boolean>;
 type Section = "Overview" | "Roles & KPIs" | "People" | "Units";
@@ -25,9 +28,15 @@ export function OrgHub({
   change,
   goto,
   governance,
+  tenant,
+  reload,
 }: {
   workspace: SaasWorkspace;
   change: Change;
+  /** The organization's id, for calls that do not go through `change`. */
+  tenant: string;
+  /** Reloads the workspace after a change made outside `change`. */
+  reload: () => Promise<void>;
   /** Opens another workspace tab, such as "KPI library". */
   goto: (tab: "KPI library" | "Data & approvals" | "Dashboard") => void;
   /** Approval policy and setup proposals, owned by the page. */
@@ -45,7 +54,7 @@ export function OrgHub({
       </nav>
       {section === "Overview" && <Overview w={w} change={change} goto={goto} open={setSection} governance={governance} />}
       {section === "Roles & KPIs" && <Roles w={w} change={change} />}
-      {section === "People" && <People w={w} change={change} />}
+      {section === "People" && <People w={w} change={change} tenant={tenant} reload={reload} />}
       {section === "Units" && <Units w={w} change={change} />}
     </>
   );
@@ -416,11 +425,19 @@ function RoleEditor({
 
 // ---------------------------------------------------------------------------
 
-function People({ w, change }: { w: SaasWorkspace; change: Change }) {
+function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Change; tenant: string; reload: () => Promise<void> }) {
   const [editingId, setEditingId] = useState("");
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [inviteRoles, setInviteRoles] = useState<string[]>([]);
   const [email, setEmail] = useState("");
+  const [emailsText, setEmailsText] = useState("");
+  const [loginRoles, setLoginRoles] = useState<string[]>([]);
+  const [issued, setIssued] = useState<IssuedSet>();
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginMessage, setLoginMessage] = useState("");
+  // Creating logins needs the identity API. Without it, people are added by invitation link.
+  const canCreateLogins = Boolean(import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
+  const parsed = useMemo(() => parseEmails(emailsText), [emailsText]);
   const roleName = new Map(w.roles.map((r) => [r.id, r.name]));
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   const sorted = [...w.members].sort((a, b) => Number(b.owner) - Number(a.owner) || Number(b.active) - Number(a.active) || (a.email ?? a.displayName).localeCompare(b.email ?? b.displayName));
@@ -516,10 +533,68 @@ function People({ w, change }: { w: SaasWorkspace; change: Change }) {
         </div>
       </section>
 
+      {canCreateLogins && (
+        <section className="saas-card">
+          <h2>Add people with a login</h2>
+          <p className="muted">
+            Each person gets an email and a temporary password, shown to you once. They sign in, choose their own password, and see only what their roles allow.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (parsed.errors.length || parsed.emails.length === 0 || loginRoles.length === 0) return;
+              setLoginBusy(true);
+              setLoginMessage("");
+              setIssued(undefined);
+              request(`/api/identity/organizations/${tenant}/people`, InviteMembersResponseSchema, {
+                members: parsed.emails.map((address) => ({ email: address, roleIds: loginRoles })),
+              })
+                .then(async (result) => {
+                  setIssued({ title: result.members.length === 1 ? "Person added" : "People added", mode: result.mode, people: result.members });
+                  setEmailsText("");
+                  setLoginRoles([]);
+                  await reload();
+                })
+                .catch((error) => setLoginMessage(error instanceof Error ? error.message : "That did not work."))
+                .finally(() => setLoginBusy(false));
+            }}
+          >
+            <label>
+              Work emails, one per line
+              <textarea value={emailsText} onChange={(e) => setEmailsText(e.target.value)} rows={4} placeholder={"anita@acme.com\nravi@acme.com"} />
+            </label>
+            <fieldset className="kpi-pick">
+              <legend className="muted">They all get these roles</legend>
+              <div className="console-roles">
+                {w.roles.map((r) => (
+                  <label key={r.id}>
+                    <input type="checkbox" checked={loginRoles.includes(r.id)} onChange={() => setLoginRoles(toggle(loginRoles, r.id))} />
+                    {r.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {parsed.errors.length > 0 && (
+              <ul className="errors">
+                {parsed.errors.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+            {loginMessage && <p role="alert" className="errors">{loginMessage}</p>}
+            <button disabled={loginBusy || parsed.emails.length === 0 || parsed.errors.length > 0 || loginRoles.length === 0}>
+              {loginBusy ? "Creating…" : `Create ${parsed.emails.length || ""} login${parsed.emails.length === 1 ? "" : "s"}`.replace("  ", " ")}
+            </button>
+          </form>
+          {issued && <AccessPanel set={issued} roleName={(key) => roleName.get(key) ?? key} />}
+        </section>
+      )}
+
       <section className="saas-card">
-        <h2>Add a person</h2>
+        <h2>{canCreateLogins ? "Or send an invitation link" : "Add a person"}</h2>
         <p className="muted">
-          They get a private invitation link, shown here once. They sign in or create their account with this exact email, then open the link. Your platform operator can instead create a login with a temporary password for them.
+          They get a private invitation link, shown here once. They sign in or create their account with this exact email, then open the link.
+          {canCreateLogins ? " Use this for someone who already has an account." : " Your platform operator can set up logins with temporary passwords instead."}
         </p>
         <form
           onSubmit={(e) => {

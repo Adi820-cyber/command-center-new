@@ -10,10 +10,15 @@ import { pendingModuleDeps } from './modules/pending.ts';
 const ALLOWED = 'https://orbit-web.fixture.example';
 let app: FastifyInstance;
 
+// A database handle that is never reached: the request is refused for lack of a sign-in first.
+const unreachable = { transaction: async () => { throw new Error('should not be reached'); } };
+
 beforeAll(async () => {
   const issuer = await createTestIssuer();
   app = await buildApp({
     allowedOrigins: [ALLOWED],
+    database: unreachable,
+    controlDatabase: unreachable,
     modules: pendingModuleDeps(),
     auth: {
       getKey: issuer.getKey,
@@ -68,10 +73,55 @@ describe('protected routes', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('require authentication on operator routes too', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/control/organizations' });
+    expect(response.statusCode).toBe(401);
+  });
+
   it('answer unknown /api paths with the not_found envelope and no data', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/does-not-exist' });
     expect(response.statusCode).toBe(404);
     expect(ErrorEnvelopeSchema.parse(response.json()).error.code).toBe('not_found');
+  });
+});
+
+describe('each process serves only its own routes', () => {
+  const build = async (options: { database?: typeof unreachable; controlDatabase?: typeof unreachable }) => {
+    const issuer = await createTestIssuer();
+    return buildApp({
+      allowedOrigins: [ALLOWED],
+      modules: pendingModuleDeps(),
+      ...options,
+      auth: { getKey: issuer.getKey, issuer: TEST_ISSUER, audience: TEST_AUDIENCE, memberships: fixtureMemberships() },
+    });
+  };
+
+  it('a customer API has no operator routes', async () => {
+    const customer = await build({ database: unreachable });
+    for (const url of ['/api/control/organizations', '/api/control/templates']) {
+      const response = await customer.inject({ method: 'GET', url });
+      expect(response.statusCode, url).toBe(404);
+      expect(ErrorEnvelopeSchema.parse(response.json()).error.code).toBe('not_found');
+    }
+    const lifecycle = await customer.inject({ method: 'POST', url: '/api/control/organizations/00000000-0000-4000-8000-000000000000/status', payload: { status: 'suspended' } });
+    expect(lifecycle.statusCode).toBe(404);
+    expect((await customer.inject({ method: 'GET', url: '/api/saas/organizations' })).statusCode).toBe(401);
+    await customer.close();
+  });
+
+  it('a control API has no customer routes', async () => {
+    const control = await build({ controlDatabase: unreachable });
+    for (const url of ['/api/saas/organizations', '/api/saas/00000000-0000-4000-8000-000000000000/workspace']) {
+      expect((await control.inject({ method: 'GET', url })).statusCode, url).toBe(404);
+    }
+    expect((await control.inject({ method: 'GET', url: '/api/control/organizations' })).statusCode).toBe(401);
+    await control.close();
+  });
+
+  it('health is served by every process', async () => {
+    const bare = await build({});
+    expect((await bare.inject({ method: 'GET', url: '/health' })).statusCode).toBe(200);
+    await bare.close();
   });
 });
 

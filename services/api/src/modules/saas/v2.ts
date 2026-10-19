@@ -45,23 +45,7 @@ const PLAIN_TOPICS = new Set(["unknown", "no_access", "no_data"]);
  * owner and its members without ever being able to read their data.
  */
 export async function registerV2Routes(app: FastifyInstance, options: SaasOptions): Promise<void> {
-  const { subject, tenant } = makeRunners(options);
-  const control = async <T>(req: Parameters<typeof subject>[0], fn: Parameters<typeof inSubject<T>>[2]) =>
-    inSubject(options.controlDatabase, await subject(req), async (tx) => {
-      const [row] = await tx.query("select kpi_control.is_operator() as allowed");
-      if (row?.allowed !== true)
-        throw new ApiError("forbidden", "A platform operator account is required.");
-      return fn(tx);
-    }, "kpi_control_app");
-
-  /**
-   * Proves the caller is a signed-in platform operator, and does nothing else.
-   * Creating logins uses Supabase's secret key, so this must run BEFORE any login
-   * is created: otherwise anyone could make this API create accounts and only
-   * be turned away afterwards.
-   */
-  const requireOperator = (req: Parameters<typeof subject>[0]) => control(req, async () => undefined);
-
+  const { subject, tenant, control, requireOperator } = makeRunners(options);
   // The KPI catalog is reference data, the same for everyone who is signed in.
   app.get("/api/saas/catalog", async (req) =>
     inSubject(options.database, await subject(req), async (tx) => {
@@ -158,6 +142,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
             body.templateId ?? null,
             prepared.json,
           ]);
+          await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
           return row?.id;
         });
         return ProvisionResponseSchema.parse({
@@ -184,6 +169,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
             invitationJson(members),
           ])
         : await tx.query("select kpi_control.provision($1,$2,$3) as id", [body.name, body.ownerEmail, hash(ownerToken)]);
+      await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
       return ProvisionResponseSchema.parse({
         id: row?.id,
         mode: "invitations",

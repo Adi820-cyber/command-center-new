@@ -14,7 +14,7 @@ const stamp = Date.now().toString(36);
 const mail = (n) => `${n}.${stamp}@owner.test`;
 const op = await token("operator@demo.local", "x");
 const org = await call(CTL, op, "POST", "/api/control/organizations", {
-  name: `Owner Co ${stamp}`, ownerEmail: mail("owner"), templateId: "diagnostics-lab",
+  name: `Owner Co ${stamp}`, ownerEmailVerified: true, ownerEmail: mail("owner"), templateId: "diagnostics-lab",
   members: [{ email: mail("ceo"), roleKeys: ["executive"] }, { email: mail("entry"), roleKeys: ["data_contributor"] }],
 });
 const pw = Object.fromEntries([org.owner, ...org.members].map((p) => [p.email, p.temporaryPassword]));

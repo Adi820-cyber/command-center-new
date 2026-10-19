@@ -12,7 +12,9 @@ export async function request<T>(
   }
   const configuredBase = path.startsWith('/api/control/')
     ? import.meta.env.VITE_CONTROL_API_BASE_URL
-    : import.meta.env.VITE_API_BASE_URL;
+    : path.startsWith('/api/identity/')
+      ? import.meta.env.VITE_IDENTITY_API_BASE_URL
+      : import.meta.env.VITE_API_BASE_URL;
   const base = configuredBase?.trim().replace(/\/+$/, "");
   if (!base) throw new Error("The API address is not configured.");
   const response = await fetch(`${base}${path}`, {

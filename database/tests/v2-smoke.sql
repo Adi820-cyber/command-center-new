@@ -257,10 +257,181 @@ begin
    perform set_config('kpi.subject', u1::text, true);
    select count(*) into cnt from kpi.definitions where tenant_id = t3;
    res := res || 'login_owner_sees_all=' || (cnt = rcount) || ';';
+   -- a person sees their own roles, and only theirs
+   perform set_config('kpi.subject', u2::text, true);
+   select count(*) into cnt from kpi.my_roles(t3);
+   res := res || 'my_roles_executive=' || (cnt = 1 and exists(select 1 from kpi.my_roles(t3) where name ilike 'Executive%')) || ';';
+   perform set_config('kpi.subject', u1::text, true);
+   select count(*) into cnt from kpi.my_roles(t3);
+   res := res || 'my_roles_owner_holds_none=' || (cnt = 0) || ';';
+   perform set_config('kpi.subject', gen_random_uuid()::text, true);
+   select count(*) into cnt from kpi.my_roles(t3);
+   res := res || 'my_roles_stranger=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
    perform set_config('kpi.subject', A::text, true);
+   select count(*) into cnt from kpi.my_roles(t3);
+   res := res || 'my_roles_operator=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
    select count(*) into cnt from kpi.organizations where id = t3;
    res := res || 'operator_sees_login_org=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
    reset role;
+  end;
+
+  -- 10. organization lifecycle: one enforcement point, valid moves only, safe permanent deletion
+  declare
+    l1 uuid := gen_random_uuid(); l2 uuid := gen_random_uuid(); l3 uuid := gen_random_uuid(); lt uuid; keep uuid; orphans uuid[]; st text; cnt int; rows_before int;
+  begin
+   set local role kpi_control_app;
+   perform set_config('kpi.subject', A::text, true);
+   lt := kpi_control.provision_with_people('Lifecycle Co', 'diagnostics-lab', jsonb_build_array(
+     jsonb_build_object('email','owner@life.test','owner',true,'subject',l1),
+     jsonb_build_object('email','ceo@life.test','roleKeys','["executive"]'::jsonb,'subject',l2)));
+   begin perform kpi_control.record_creation(lt, true, 'owner@life.test', false);
+     res := res || 'unverified_email_accepted=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'unverified_email_accepted=blocked;'; end;
+   perform kpi_control.record_creation(lt, false, 'owner@life.test', true);
+   select status into st from kpi_control.list_organizations() where id = lt;
+   res := res || 'created_pending=' || (st = 'pending') || ';';
+   reset role;
+
+   -- a pending organization admits nobody, not even its owner
+   set local role kpi_app;
+   perform set_config('kpi.subject', l1::text, true);
+   res := res || 'pending_owner_is_owner=' || (case when kpi.is_owner(lt) then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'pending_member_is_member=' || (case when kpi.is_member(lt) then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   select count(*) into cnt from kpi.definitions where tenant_id = lt;
+   res := res || 'pending_sees_data=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
+   select status into st from kpi.my_organizations() where id = lt;
+   res := res || 'pending_owner_sees_status=' || coalesce(st, 'none') || ';';
+   begin perform kpi.rename_organization(lt, 'X'); res := res || 'pending_owner_renames=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'pending_owner_renames=blocked;'; end;
+   reset role;
+
+   -- only an operator moves an organization, and only along valid paths
+   set local role kpi_control_app;
+   perform set_config('kpi.subject', l1::text, true);
+   begin perform kpi_control.set_org_status(lt, 'active'); res := res || 'owner_activates_self=ALLOWED(BUG);';
+   exception when insufficient_privilege then res := res || 'owner_activates_self=blocked;'; end;
+   select count(*) into cnt from kpi_control.list_organizations();
+   res := res || 'non_operator_lists_orgs=' || (case when cnt = 0 then 'blocked' else 'ALLOWED(BUG)' end) || ';';
+   perform set_config('kpi.subject', A::text, true);
+   begin perform kpi_control.set_org_status(lt, 'suspended'); res := res || 'pending_to_suspended=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'pending_to_suspended=blocked;'; end;
+   begin perform kpi_control.set_org_status(lt, 'pending'); res := res || 'to_pending=ALLOWED(BUG);';
+   exception when sqlstate '22023' then res := res || 'to_pending=blocked;'; end;
+   perform kpi_control.set_org_status(lt, 'active');
+   reset role;
+   set local role kpi_app;
+   perform set_config('kpi.subject', l1::text, true);
+   res := res || 'active_owner_works=' || kpi.is_owner(lt) || ';';
+   reset role;
+
+   -- suspended blocks again, and keeps everything
+   select count(*) into rows_before from kpi.definitions where tenant_id = lt;
+   set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   perform kpi_control.set_org_status(lt, 'suspended');
+   reset role;
+   set local role kpi_app; perform set_config('kpi.subject', l2::text, true);
+   res := res || 'suspended_member_blocked=' || (not kpi.is_member(lt)) || ';';
+   reset role;
+   select count(*) into cnt from kpi.definitions where tenant_id = lt;
+   res := res || 'suspended_keeps_data=' || (cnt = rows_before and cnt > 0) || ';';
+
+   -- delete, restore, and the 30-day rule
+   set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   perform kpi_control.set_org_status(lt, 'deleted');
+   select (purge_after > now() + interval '29 days') into st from kpi_control.list_organizations() where id = lt;
+   res := res || 'delete_sets_30_day_window=' || st || ';';
+   begin perform kpi_control.purge_organization(lt); res := res || 'purge_early=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'purge_early=blocked;'; end;
+   perform kpi_control.set_org_status(lt, 'suspended');
+   select (purge_after is null) into st from kpi_control.list_organizations() where id = lt;
+   res := res || 'restore_cancels_deletion=' || st || ';';
+   begin perform kpi_control.purge_organization(lt); res := res || 'purge_when_not_deleted=ALLOWED(BUG);';
+   exception when sqlstate '55000' then res := res || 'purge_when_not_deleted=blocked;'; end;
+   reset role;
+
+   -- permanent deletion: erases this organization, keeps others, returns only logins that belong to nobody else
+   keep := (select id from kpi.organizations where id = t limit 1);
+   select count(*) into rows_before from kpi.definitions where tenant_id = keep;
+   -- l3 is also a member of the first organization, so their login must survive
+   reset role; set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   perform kpi_control.set_org_status(lt, 'deleted');
+   reset role;
+   insert into kpi.memberships(tenant_id, subject, display_name, email) values (lt, l3, 'shared', 'shared@life.test');
+   insert into kpi.memberships(tenant_id, subject, display_name, email) values (keep, l3, 'shared', 'shared@keep.test');
+   update kpi.organizations set purge_after = now() - interval '1 day' where id = lt;
+   set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   orphans := kpi_control.purge_organization(lt);
+   reset role;
+   res := res || 'purge_returns_only_orphan_logins=' || (l1 = any(orphans) and l2 = any(orphans) and not (l3 = any(orphans)) and not (A = any(orphans))) || ';';
+   select count(*) into cnt from kpi.organizations where id = lt;
+   res := res || 'purge_removes_org=' || (cnt = 0) || ';';
+   select count(*) into cnt from kpi.definitions where tenant_id = lt;
+   select count(*) into rows_before from kpi.definitions where tenant_id = keep;
+   res := res || 'purge_removes_its_data=' || (cnt = 0) || ';';
+   res := res || 'purge_keeps_other_org=' || (rows_before > 0) || ';';
+   select count(*) into cnt from kpi_control.lifecycle where tenant_id = lt and event = 'purged';
+   res := res || 'purge_is_logged=' || (cnt = 1) || ';';
+  end;
+
+  -- 11. owner-issued logins: the identity role is nearly powerless, and the owner function guards itself
+  declare
+    i1 uuid := gen_random_uuid(); i2 uuid := gen_random_uuid(); i3 uuid := gen_random_uuid(); it uuid; it2 uuid; exec_role uuid; foreign_role uuid; cnt int; ev int;
+  begin
+   res := res || 'identity_reads_memberships=' || (case when has_table_privilege('kpi_identity_app','kpi.memberships','select') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_reads_results=' || (case when has_table_privilege('kpi_identity_app','kpi.results','select') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_writes_memberships=' || (case when has_table_privilege('kpi_identity_app','kpi.memberships','insert') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_reads_operator_tables=' || (case when has_table_privilege('kpi_identity_app','kpi_control.registry','select') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_calls_apply_template=' || (case when has_function_privilege('kpi_identity_app','kpi.apply_template(uuid,text,uuid)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_calls_approve=' || (case when has_function_privilege('kpi_identity_app','kpi.approve_batch(uuid,uuid)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_calls_add_people=' || (case when has_function_privilege('kpi_identity_app','kpi_control.add_people(uuid,jsonb)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_calls_provision=' || (case when has_function_privilege('kpi_identity_app','kpi_control.provision_with_people(text,text,jsonb)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+   res := res || 'identity_has_its_two_functions=' || (has_function_privilege('kpi_identity_app','kpi.is_owner(uuid)','execute') and has_function_privilege('kpi_identity_app','kpi.add_people_as_owner(uuid,jsonb)','execute')) || ';';
+   res := res || 'customer_calls_add_people_as_owner=' || (case when has_function_privilege('kpi_app','kpi.add_people_as_owner(uuid,jsonb)','execute') then 'ALLOWED(BUG)' else 'blocked' end) || ';';
+
+   set local role kpi_control_app; perform set_config('kpi.subject', A::text, true);
+   it := kpi_control.provision_with_people('Identity Co', 'diagnostics-lab', jsonb_build_array(
+     jsonb_build_object('email','owner@idn.test','owner',true,'subject',i1),
+     jsonb_build_object('email','ceo@idn.test','roleKeys','["executive"]'::jsonb,'subject',i2)));
+   perform kpi_control.record_creation(it, true, 'owner@idn.test', true);
+   it2 := kpi_control.provision_with_people('Identity Other', 'diagnostics-lab', jsonb_build_array(jsonb_build_object('email','o2@idn.test','owner',true,'subject',gen_random_uuid())));
+   perform kpi_control.record_creation(it2, true, 'o2@idn.test', true);
+   reset role;
+   select id into exec_role from kpi.roles where tenant_id = it and template_key = 'executive';
+   select id into foreign_role from kpi.roles where tenant_id = it2 limit 1;
+   perform 1 from kpi.roles where tenant_id = it2;
+   if foreign_role is null then
+     insert into kpi.roles(tenant_id,name) values (it2,'Other role') returning id into foreign_role;
+   end if;
+
+   set local role kpi_identity_app;
+   perform set_config('kpi.subject', i2::text, true);
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','x@idn.test','roleIds',jsonb_build_array(exec_role::text),'subject',gen_random_uuid())));
+     res := res || 'member_adds_people=ALLOWED(BUG);'; exception when insufficient_privilege then res := res || 'member_adds_people=blocked;'; end;
+   perform set_config('kpi.subject', i1::text, true);
+   begin perform kpi.add_people_as_owner(it2, jsonb_build_array(jsonb_build_object('email','x@idn.test','roleIds',jsonb_build_array(foreign_role::text),'subject',gen_random_uuid())));
+     res := res || 'owner_adds_to_other_org=ALLOWED(BUG);'; exception when insufficient_privilege then res := res || 'owner_adds_to_other_org=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','boss@idn.test','owner',true,'roleIds',jsonb_build_array(exec_role::text),'subject',gen_random_uuid())));
+     res := res || 'owner_creates_owner=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'owner_creates_owner=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','keys@idn.test','roleKeys','["executive"]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'owner_uses_template_keys=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'owner_uses_template_keys=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','foreign@idn.test','roleIds',jsonb_build_array(foreign_role::text),'subject',gen_random_uuid())));
+     res := res || 'role_from_other_org=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'role_from_other_org=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','norole@idn.test','roleIds','[]'::jsonb,'subject',gen_random_uuid())));
+     res := res || 'no_role=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'no_role=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','op@idn.test','roleIds',jsonb_build_array(exec_role::text),'subject',A)));
+     res := res || 'operator_as_member=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'operator_as_member_by_owner=blocked;'; end;
+   begin perform kpi.add_people_as_owner(it, (select jsonb_agg(jsonb_build_object('email','p'||g||'@idn.test','roleIds',jsonb_build_array(exec_role::text),'subject',gen_random_uuid())) from generate_series(1,101) g));
+     res := res || 'more_than_100=ALLOWED(BUG);'; exception when sqlstate '22023' then res := res || 'more_than_100=blocked;'; end;
+   cnt := kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','Fine@idn.test','roleIds',jsonb_build_array(exec_role::text),'subject',i3)));
+   res := res || 'owner_adds_person=' || (cnt = 1) || ';';
+   begin perform kpi.add_people_as_owner(it, jsonb_build_array(jsonb_build_object('email','FINE@idn.test','roleIds',jsonb_build_array(exec_role::text),'subject',gen_random_uuid())));
+     res := res || 'same_person_twice=ALLOWED(BUG);'; exception when sqlstate '23505' then res := res || 'same_person_twice=blocked;'; end;
+   reset role;
+   select count(*) into cnt from kpi.member_roles mr join kpi.memberships m on m.id = mr.member_id where m.tenant_id = it and m.subject = i3 and mr.role_id = exec_role;
+   select count(*) into ev from kpi.audit where tenant_id = it and event = 'member.created_by_owner' and subject = i1;
+   res := res || 'new_person_has_the_role=' || (cnt = 1) || ';';
+   res := res || 'audit_says_owner_did_it=' || (ev = 1) || ';';
+   select count(*) into cnt from kpi.memberships where tenant_id = it;
+   res := res || 'failed_attempts_left_nothing=' || (cnt = 3) || ';';
   end;
 
   raise exception 'SMOKE_RESULT %', res;

@@ -27,6 +27,8 @@ import { audit, hash, input, inSubject, makeRunners, owner, permit, uuid, type S
 import { loadWorkspace } from "./workspace.ts";
 import { registerV2Routes } from "./v2.ts";
 import { registerOwnerRoutes } from "./owner.ts";
+import { registerLifecycleRoutes } from "./lifecycle.ts";
+import { registerIdentityRoutes } from "./identity.ts";
 
 export type { SaasOptions } from "./helpers.ts";
 
@@ -39,7 +41,7 @@ export async function registerSaasRoutes(
     inSubject(options.database, await subject(req), async (tx) =>
       TenantListSchema.parse(
         await tx.query(
-          "select id,name,kpi.is_owner(id) as owner from kpi.organizations order by name",
+          "select id,name,owner,status from kpi.my_organizations() order by name",
         ),
       ),
     ),
@@ -556,7 +558,7 @@ export async function registerSaasRoutes(
     inSubject(options.controlDatabase, await subject(req), async (tx) => {
       return ControlOrganizationListSchema.parse(
         await tx.query(
-          "select id,name,template_id as \"templateId\" from kpi_control.registry order by name",
+          'select id,name,template_id as "templateId",status,status_changed_at::text as "statusChangedAt",purge_after::text as "purgeAfter",owner_email as "ownerEmail",owner_email_verified_at::text as "ownerEmailVerifiedAt" from kpi_control.list_organizations()',
         ),
       );
     }, "kpi_control_app"),
@@ -574,4 +576,6 @@ export async function registerSaasRoutes(
   );
   await registerV2Routes(app, options);
   await registerOwnerRoutes(app, options);
+  await registerLifecycleRoutes(app, options);
+  await registerIdentityRoutes(app, options);
 }

@@ -25,7 +25,7 @@ const op = await token("operator@demo.local", "x");
 const who = { owner: mail("owner"), ceo: mail("ceo"), entry: mail("entry"), review: mail("review"), existing: mail("existing") };
 await admin("POST", "", { email: who.existing, password: "Existing-Pass-9" });
 const org = await call(CTL, op, "POST", "/api/control/organizations", {
-  name: `Lablogin ${stamp}`, ownerEmail: who.owner, templateId: "diagnostics-lab",
+  name: `Lablogin ${stamp}`, ownerEmailVerified: true, ownerEmail: who.owner, templateId: "diagnostics-lab",
   members: [
     { email: who.ceo, roleKeys: ["executive"] },
     { email: who.entry, roleKeys: ["data_contributor"] },
@@ -73,7 +73,7 @@ ok((await workspace(ceo)).results.length > 0, "the executive now sees results fo
 
 // 4b. nobody but a signed-in operator can make this API create a login
 const attempts = async () => (await (await fetch(`${AUTH}/admin/attempts`)).json()).attempts;
-const validBody = (n) => ({ name: `Intruder ${n}`, ownerEmail: mail(`intruder${n}`), templateId: "diagnostics-lab", members: [{ email: mail(`intruder${n}m`), roleKeys: ["executive"] }] });
+const validBody = (n) => ({ name: `Intruder ${n}`, ownerEmailVerified: true, ownerEmail: mail(`intruder${n}`), templateId: "diagnostics-lab", members: [{ email: mail(`intruder${n}m`), roleKeys: ["executive"] }] });
 const tried = await attempts();
 const anon = await fetch(CTL + "/api/control/organizations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(validBody(1)) });
 ok(anon.status === 401, `a request with no sign-in is refused (${anon.status})`);
@@ -94,18 +94,18 @@ ok(accepted.status === 200, "the existing account accepts the invitation with it
 // 7. all or nothing: a bad role leaves no stray logins behind
 const before = Object.keys(registry()).length;
 const bad = await raw(CTL, op, "POST", "/api/control/organizations", {
-  name: `Bad ${stamp}`, ownerEmail: mail("badowner"), templateId: "diagnostics-lab",
+  name: `Bad ${stamp}`, ownerEmailVerified: true, ownerEmail: mail("badowner"), templateId: "diagnostics-lab",
   members: [{ email: mail("badmember"), roleKeys: ["janitor"] }],
 });
 ok(bad.status >= 400, `a role the template does not have is refused (${bad.status})`);
 ok(Object.keys(registry()).length === before, "and the logins created along the way were removed");
 const dup = await raw(CTL, op, "POST", "/api/control/organizations", {
-  name: `Dup ${stamp}`, ownerEmail: mail("dupowner"), templateId: "diagnostics-lab",
+  name: `Dup ${stamp}`, ownerEmailVerified: true, ownerEmail: mail("dupowner"), templateId: "diagnostics-lab",
   members: [{ email: mail("dm"), roleKeys: ["executive"] }, { email: mail("DM").toUpperCase().replace("@LABLOGIN.TEST", "@lablogin.test"), roleKeys: ["executive"] }],
 });
 ok(dup.status === 400 && Object.keys(registry()).length === before, "the same email twice is refused before any login is created");
 const asOperator = await raw(CTL, op, "POST", "/api/control/organizations", {
-  name: `Op ${stamp}`, ownerEmail: mail("opowner"), templateId: "diagnostics-lab",
+  name: `Op ${stamp}`, ownerEmailVerified: true, ownerEmail: mail("opowner"), templateId: "diagnostics-lab",
   members: [{ email: "operator@demo.local", roleKeys: ["executive"] }],
 });
 ok(asOperator.status >= 400, "an operator account cannot be made a member of an organization");

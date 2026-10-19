@@ -12,6 +12,8 @@ export interface SaasOptions {
   auth: AuthOptions;
   database?: Database;
   controlDatabase?: Database;
+  /** The identity API's own database login. Present only on that process. */
+  identityDatabase?: Database;
   /** Creates logins for the people an operator adds. Present only on the control API. */
   authAdmin?: AuthAdmin;
   /** Models that may reword an Ask answer. Empty keeps Ask fully deterministic. */
@@ -72,7 +74,7 @@ export async function inSubject<T>(
   db: Database | undefined,
   subject: string,
   fn: (tx: Tx) => Promise<T>,
-  role: "kpi_app" | "kpi_control_app" = "kpi_app",
+  role: "kpi_app" | "kpi_control_app" | "kpi_identity_app" = "kpi_app",
 ): Promise<T> {
   if (!db)
     throw new ApiError("unavailable", "The KPI database is not configured.");
@@ -106,6 +108,8 @@ export async function inSubject<T>(
         "conflict",
         "This item already exists, has been decided, or its period is locked.",
       );
+    if (code === "55000")
+      throw new ApiError("conflict", message || "That is not possible in the organization's current state.");
     if (code === "23503" && /Role is in use/.test(message))
       throw new ApiError("conflict", "That role is still held by someone, or offered in a pending invitation. Move them to another role first.");
     if (code === "22023")
@@ -133,6 +137,12 @@ export async function inSubject<T>(
 
 
 /** The two wrappers every route uses: who is calling, and a transaction as them inside one organisation. */
+const INACTIVE_MESSAGE: Record<string, string> = {
+  pending: "This organization has not been activated yet. Your service provider will activate it.",
+  suspended: "This organization is suspended. Contact your service provider.",
+  deleted: "This organization has been removed.",
+};
+
 export function makeRunners(options: SaasOptions) {
   const subject = (req: FastifyRequest) =>
     verifyAccessToken(req.headers.authorization, options.auth);
@@ -155,11 +165,12 @@ export function makeRunners(options: SaasOptions) {
         "select kpi.is_member($1) as allowed",
         [tenantId],
       );
-      if (membership?.allowed !== true)
-        throw new ApiError(
-          "forbidden",
-          "You do not belong to this organization.",
-        );
+      if (membership?.allowed !== true) {
+        // Someone who belongs to an organization that is not active gets the reason.
+        const [mine] = await tx.query("select status from kpi.my_organizations() where id=$1", [tenantId]);
+        const status = typeof mine?.status === "string" ? mine.status : "";
+        throw new ApiError("forbidden", INACTIVE_MESSAGE[status] ?? "You do not belong to this organization.");
+      }
       if (lock)
         await tx.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
           tenantId,
@@ -168,5 +179,25 @@ export function makeRunners(options: SaasOptions) {
     });
   }
 
-  return { subject, tenant };
+  /** Runs `fn` as a platform operator, through the control database login. */
+  const control = async <T>(req: FastifyRequest, fn: (tx: Tx) => Promise<T>) =>
+    inSubject(
+      options.controlDatabase,
+      await subject(req),
+      async (tx) => {
+        const [row] = await tx.query("select kpi_control.is_operator() as allowed");
+        if (row?.allowed !== true) throw new ApiError("forbidden", "A platform operator account is required.");
+        return fn(tx);
+      },
+      "kpi_control_app",
+    );
+
+  /**
+   * Proves the caller is a signed-in platform operator, and does nothing else.
+   * Anything that uses Supabase's secret key calls this first: otherwise anyone
+   * could make this API act and only be turned away afterwards.
+   */
+  const requireOperator = (req: FastifyRequest) => control(req, async () => undefined);
+
+  return { subject, tenant, control, requireOperator };
 }

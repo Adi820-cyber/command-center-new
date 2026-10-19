@@ -70,4 +70,6 @@ Runs the whole platform on one computer with no Supabase account: a throwaway Po
 
 `node tools/local-demo/e2e-logins.mjs` does the same for temporary logins and needs the control API started with the key: each new person gets their own password, signs in with it, sees only their role's KPIs, can be added later, and a failed step leaves no stray logins. `node tools/local-demo/e2e-owner.mjs` (also with the key) checks what an owner manages: renaming, changing which KPIs a role sees and where, creating and deleting roles, revoking and restoring people, and that members cannot do any of it. Run `e2e.mjs` against a control API **without** the key, since it exercises invitation links.
 
+`e2e-lifecycle.mjs` checks pending, active, suspended, deleted, restore and permanent deletion (with the control API's key). `e2e-identity.mjs` checks owner-issued logins; it needs the identity API on port 3102, started with `IDENTITY_DATABASE_URL` (a login granted `kpi_identity_app`) and `SUPABASE_SECRET_KEY=demo-secret`.
+
 The same database rules are also checked, inside a transaction that is rolled back, by `database/tests/v2-smoke.sql`.

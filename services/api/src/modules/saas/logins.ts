@@ -5,7 +5,10 @@ import { hash } from "./helpers.ts";
 
 export interface Person {
   email: string;
+  /** Template role keys (the operator's way). */
   roleKeys: string[];
+  /** Role ids (the owner's way). */
+  roleIds?: string[];
   owner?: boolean;
 }
 
@@ -27,6 +30,9 @@ export interface PreparedLogins {
 }
 
 /** Throws if an email appears twice (ignoring case), naming it. */
+/** The roles for one person, in the form the database expects: ids or template keys, never both. */
+const rolesOf = (person: Person) => (person.roleIds ? { roleIds: person.roleIds } : { roleKeys: person.roleKeys });
+
 export function assertDistinct(people: readonly Pick<Person, "email">[]): void {
   const seen = new Set<string>();
   for (const { email } of people) {
@@ -59,12 +65,12 @@ export async function prepareLogins(people: readonly Person[], admin: AuthAdmin)
       const result = await admin.createUser(email, password);
       if (result.status === "created") {
         created.push(result.id);
-        entries.push({ email, owner: person.owner === true, roleKeys: person.roleKeys, subject: result.id });
-        shown.push({ email, roleKeys: person.roleKeys, temporaryPassword: password });
+        entries.push({ email, owner: person.owner === true, ...rolesOf(person), subject: result.id });
+        shown.push({ email, roleKeys: person.roleIds ?? person.roleKeys, temporaryPassword: password });
       } else {
         const token = randomBytes(32).toString("hex");
-        entries.push({ email, owner: person.owner === true, roleKeys: person.roleKeys, tokenHash: hash(token) });
-        shown.push({ email, roleKeys: person.roleKeys, token });
+        entries.push({ email, owner: person.owner === true, ...rolesOf(person), tokenHash: hash(token) });
+        shown.push({ email, roleKeys: person.roleIds ?? person.roleKeys, token });
       }
     }
   } catch (error) {

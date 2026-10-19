@@ -134,4 +134,13 @@ describe('ask narration providers', () => {
   it("refuses the secret key next to the customer database credential", () => {
     expect(() => loadConfig({ ...base, KPI_DATABASE_URL: 'postgresql://x', SUPABASE_SECRET_KEY: 'sb_secret_x' })).toThrow(/control API/);
   });
+
+  it("lets the identity API hold the secret key, and keeps the three credentials apart", () => {
+    const identity = loadConfig({ ...base, IDENTITY_DATABASE_URL: 'postgresql://x', SUPABASE_SECRET_KEY: 'sb_secret_x' });
+    expect(identity.identityDatabaseUrl).toBe('postgresql://x');
+    expect(identity.supabaseSecretKey).toBe('sb_secret_x');
+    expect(() => loadConfig({ ...base, IDENTITY_DATABASE_URL: 'postgresql://x', KPI_DATABASE_URL: 'postgresql://y' })).toThrow(/separately/);
+    expect(() => loadConfig({ ...base, IDENTITY_DATABASE_URL: 'postgresql://x', CONTROL_DATABASE_URL: 'postgresql://y' })).toThrow(/separately/);
+    expect(() => loadConfig({ ...base, IDENTITY_DATABASE_URL: 'postgresql://x', KPI_DATABASE_URL: 'postgresql://y', SUPABASE_SECRET_KEY: 'k' })).toThrow();
+  });
 });

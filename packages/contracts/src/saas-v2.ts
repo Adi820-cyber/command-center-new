@@ -71,6 +71,10 @@ export const ProvisionRequestSchema = z.strictObject({
   /** A template id, or leave out for an empty organisation. */
   templateId: z.string().min(1).max(80).optional(),
   members: z.array(ProvisionMemberSchema).max(500).default([]),
+  /** The operator's statement that the owner's email address was verified. Required. */
+  ownerEmailVerified: z.literal(true),
+  /** Start active (the default), or leave pending until the operator activates it. */
+  activate: z.boolean().default(true),
 });
 export type ProvisionRequest = z.infer<typeof ProvisionRequestSchema>;
 /** One person the operator added. Exactly one of the two secrets is present. */
@@ -132,4 +136,41 @@ export type WorkspaceAskResponse = z.infer<typeof WorkspaceAskResponseSchema>;
 /** Changes the target of a KPI. Null removes the target. */
 export const SetTargetRequestSchema = z.strictObject({
   target: DecimalSchema.nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// Organization lifecycle (operator)
+// ---------------------------------------------------------------------------
+
+export const SetOrganizationStatusRequestSchema = z.strictObject({
+  status: z.enum(["active", "suspended", "deleted"]),
+  /** Required to delete: the organization's exact name. */
+  confirmName: z.string().max(120).optional(),
+});
+export const PurgeOrganizationRequestSchema = z.strictObject({
+  confirmName: z.string().max(120),
+});
+export const PurgeOrganizationResponseSchema = z.strictObject({
+  ok: z.literal(true),
+  /** Logins that belonged only to this organization and were removed. */
+  removedLogins: z.number().int().nonnegative(),
+  /** Logins that should have been removed but could not be (try again, or remove them in Supabase). */
+  failedLogins: z.number().int().nonnegative(),
+});
+
+// ---------------------------------------------------------------------------
+// Owner-issued logins (identity API)
+// ---------------------------------------------------------------------------
+
+/** An owner adds people to their own organization, each with roles chosen by id. */
+export const AddLoginsRequestSchema = z.strictObject({
+  members: z
+    .array(
+      z.strictObject({
+        email: z.email(),
+        roleIds: z.array(z.uuid()).min(1).max(10),
+      }),
+    )
+    .min(1)
+    .max(50),
 });

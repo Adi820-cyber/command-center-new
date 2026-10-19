@@ -15,6 +15,7 @@ buildApp({
   logger: true,
   database: config.kpiDatabaseUrl ? createDatabase({ url: config.kpiDatabaseUrl }) : undefined,
   controlDatabase: config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined,
+  identityDatabase: config.identityDatabaseUrl ? createDatabase({ url: config.identityDatabaseUrl }) : undefined,
   askProviders: config.askProviders,
   authAdmin: config.supabaseSecretKey
     ? createAuthAdmin({ supabaseUrl: config.supabaseUrl, secretKey: config.supabaseSecretKey })

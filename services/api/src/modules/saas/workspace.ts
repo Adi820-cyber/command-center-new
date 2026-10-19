@@ -13,7 +13,7 @@ export async function loadWorkspace(
   subject: string,
 ): Promise<SaasWorkspace> {
   const [organization] = await tx.query(
-    "select id,name,kpi.is_owner(id) as owner from kpi.organizations where id=$1",
+    "select id,name,kpi.is_owner(id) as owner,status from kpi.organizations where id=$1",
     [tenant],
   );
   const units = await tx.query(
@@ -51,9 +51,11 @@ export async function loadWorkspace(
     'select id,title,result_id as "resultId",assignee_id as "assigneeId",due_date::text as "dueDate",state,version from kpi.actions where tenant_id=$1 order by due_date',
     [tenant],
   );
+  const myRoles = await tx.query("select id,name from kpi.my_roles($1::uuid)", [tenant]);
   return WorkspaceSchema.parse({
     organization,
     subject,
+    me: { owner: organization?.owner === true, roles: myRoles },
     units,
     measures,
     kpis,

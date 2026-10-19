@@ -3,23 +3,19 @@ import {
   ControlOrganizationListSchema,
   InviteMembersResponseSchema,
   MutationResponseSchema,
+  PurgeOrganizationResponseSchema,
   ProvisionResponseSchema,
   TemplateListSchema,
   type TemplateSummary,
 } from "@orbit/contracts";
 import { getCurrentSession, signOut } from "../../lib/auth";
 import { mutate, request } from "../saas/client";
-import { accessCsv, accessMessage, parsePeople, type PersonAccess, type Person, type RoleOption } from "./people";
+import { parsePeople, type Person, type RoleOption } from "./people";
+import { AccessPanel, type IssuedSet } from "../saas/access-panel";
 import "../saas/saas.css";
 import "../saas/v2.css";
 
 type Organizations = ReturnType<typeof ControlOrganizationListSchema.parse>;
-type Issued = PersonAccess;
-interface IssuedSet {
-  title: string;
-  mode: "logins" | "invitations";
-  people: Issued[];
-}
 
 const onSubmitAsync =
   (fn: (event: FormEvent<HTMLFormElement>) => Promise<void>) =>
@@ -27,14 +23,6 @@ const onSubmitAsync =
     void fn(event);
   };
 
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Rows of email + roles, with a box to paste a whole list. */
 function PeopleEditor({
@@ -148,78 +136,6 @@ function PeopleEditor({
   );
 }
 
-/** Each person's access, shown once, with copy and download. */
-function AccessPanel({ set }: { set: IssuedSet }) {
-  const [copied, setCopied] = useState("");
-  const origin = window.location.origin;
-  async function copy(text: string, id: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(id);
-      setTimeout(() => setCopied(""), 1500);
-    } catch {
-      setCopied("");
-    }
-  }
-  const logins = set.people.filter((p) => p.temporaryPassword).length;
-  const links = set.people.length - logins;
-  return (
-    <section>
-      <h2>{set.title}</h2>
-      <p className="warn">
-        {logins > 0 && (
-          <>
-            These temporary passwords are shown <strong>only now</strong>. Send each person their own details privately.
-            They are asked to choose a new password the first time they sign in.{" "}
-          </>
-        )}
-        {links > 0 && (
-          <>
-            {logins > 0 ? "People who already had an account " : "Each link "}
-            {logins > 0 ? "get a one-time invitation link instead: they sign in with their existing password, then open it. " : "works once, for the matching email, and expires in seven days. "}
-          </>
-        )}
-      </p>
-      <table className="console-links">
-        <thead>
-          <tr>
-            <th>Person</th>
-            <th>Roles</th>
-            <th>{logins > 0 && links === 0 ? "Temporary password" : "Password or link"}</th>
-            <th><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {set.people.map((p) => (
-            <tr key={p.email}>
-              <td>{p.email}</td>
-              <td>{p.roleKeys.length ? p.roleKeys.join(", ") : "owner"}</td>
-              <td>
-                <input
-                  readOnly
-                  value={p.temporaryPassword ?? `${origin}/invite#${p.token ?? ""}`}
-                  onFocus={(e) => e.target.select()}
-                  aria-label={`${p.temporaryPassword ? "Temporary password" : "Invitation"} for ${p.email}`}
-                  style={p.temporaryPassword ? { fontFamily: "ui-monospace, monospace" } : undefined}
-                />
-              </td>
-              <td>
-                <button type="button" className="secondary" onClick={() => void copy(accessMessage(p, origin), p.email)}>
-                  {copied === p.email ? "Copied" : "Copy message"}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div style={{ display: "flex", gap: 10 }}>
-        <button type="button" className="secondary" onClick={() => download("people-access.csv", accessCsv(set.people, origin))}>
-          Download all (CSV)
-        </button>
-      </div>
-    </section>
-  );
-}
 
 type Access = "checking" | "granted" | "denied";
 
@@ -234,6 +150,7 @@ export function OperatorConsoleRoute() {
   const [people, setPeople] = useState<Person[]>([]);
   const [issued, setIssued] = useState<IssuedSet>();
   const [addTo, setAddTo] = useState("");
+  const [confirming, setConfirming] = useState<{ id: string; kind: "delete" | "erase"; typed: string }>();
   const [morePeople, setMorePeople] = useState<Person[]>([]);
 
   useEffect(() => {
@@ -296,6 +213,8 @@ export function OperatorConsoleRoute() {
       const result = await request("/api/control/organizations", ProvisionResponseSchema, {
         name: field("name"),
         ownerEmail: field("email"),
+        ownerEmailVerified: true,
+        activate: data.get("activate") === "on",
         ...(templateId ? { templateId } : {}),
         members: people.map((p) => ({ email: p.email.trim(), roleKeys: p.roleKeys })),
       });
@@ -309,6 +228,58 @@ export function OperatorConsoleRoute() {
       setOrganizations(await request("/api/control/organizations", ControlOrganizationListSchema));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Unable to provision organization.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // The time, kept current while the page is open, to decide whether a deleted organization may be erased.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const canErase = (purgeAfter: string | null) => purgeAfter !== null && new Date(purgeAfter).getTime() <= now;
+
+  const refresh = async () => setOrganizations(await request("/api/control/organizations", ControlOrganizationListSchema));
+
+  /** Moves an organization to a new status, then refreshes the list. */
+  async function moveTo(org: Organizations[number], status: "active" | "suspended" | "deleted", confirmName?: string) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await request(`/api/control/organizations/${org.id}/status`, MutationResponseSchema, { status, ...(confirmName ? { confirmName } : {}) });
+      await refresh();
+      setMessage(
+        status === "active"
+          ? `“${org.name}” is active.`
+          : status === "suspended"
+            ? org.status === "deleted"
+              ? `“${org.name}” was restored. It is suspended until you activate it.`
+              : `“${org.name}” is suspended. Nobody in it can work until you activate it again.`
+            : `“${org.name}” was deleted. You can restore it for 30 days, then delete it permanently.`,
+      );
+      setConfirming(undefined);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "That did not work.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function erase(org: Organizations[number], confirmName: string) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await request(`/api/control/organizations/${org.id}/purge`, PurgeOrganizationResponseSchema, { confirmName });
+      await refresh();
+      setMessage(
+        `“${org.name}” was permanently deleted, with ${result.removedLogins} login${result.removedLogins === 1 ? "" : "s"} removed.` +
+          (result.failedLogins ? ` ${result.failedLogins} could not be removed; delete them in Supabase.` : ""),
+      );
+      setConfirming(undefined);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "That did not work.");
     } finally {
       setBusy(false);
     }
@@ -461,6 +432,22 @@ export function OperatorConsoleRoute() {
         ) : (
           <p className="muted">Choose a template to add people with roles.</p>
         )}
+        <div className="console-checks">
+          <label className="check-line">
+            <input type="checkbox" name="verified" required />
+            <span>
+              I have verified that this email address belongs to the owner.
+              <small className="muted"> The owner signs in with a temporary password and must choose their own.</small>
+            </span>
+          </label>
+          <label className="check-line">
+            <input type="checkbox" name="activate" defaultChecked />
+            <span>
+              Activate immediately.
+              <small className="muted"> Untick to keep it pending; nobody can work in it until you activate it.</small>
+            </span>
+          </label>
+        </div>
         <div>
           <button disabled={busy}>{busy ? "Creating…" : "Create organization"}</button>
         </div>
@@ -477,6 +464,8 @@ export function OperatorConsoleRoute() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Status</th>
+                <th>Owner</th>
                 <th>Template</th>
                 <th><span className="sr-only">Actions</span></th>
               </tr>
@@ -506,12 +495,80 @@ export function OperatorConsoleRoute() {
                         </div>
                       )}
                     </td>
+                    <td>
+                      <span className={`saas-badge ${o.status === "active" ? "good" : o.status === "pending" ? "" : "bad"}`}>{o.status}</span>
+                      {o.status === "deleted" && o.purgeAfter && (
+                        <small className="muted" style={{ display: "block", marginTop: 4 }}>
+                          Permanent deletion from {new Date(o.purgeAfter).toLocaleDateString()}
+                        </small>
+                      )}
+                    </td>
+                    <td>
+                      {o.ownerEmail ?? "—"}
+                      {o.ownerEmailVerifiedAt && (
+                        <small className="muted" style={{ display: "block" }}>
+                          email verified {new Date(o.ownerEmailVerifiedAt).toLocaleDateString()}
+                        </small>
+                      )}
+                    </td>
                     <td>{t?.name ?? (o.templateId ? o.templateId : "None")}</td>
                     <td>
-                      {t && addTo !== o.id && (
-                        <button type="button" className="secondary" onClick={() => { setAddTo(o.id); setMorePeople([]); }}>
-                          Add people
-                        </button>
+                      <div className="csv-actions" style={{ marginTop: 0 }}>
+                        {(o.status === "pending" || o.status === "suspended") && (
+                          <button type="button" disabled={busy} onClick={() => void moveTo(o, "active")}>Activate</button>
+                        )}
+                        {o.status === "active" && (
+                          <button type="button" className="secondary" disabled={busy} onClick={() => void moveTo(o, "suspended")}>Suspend</button>
+                        )}
+                        {o.status === "deleted" && (
+                          <button type="button" disabled={busy} onClick={() => void moveTo(o, "suspended")}>Restore</button>
+                        )}
+                        {t && addTo !== o.id && o.status !== "deleted" && (
+                          <button type="button" className="secondary" onClick={() => { setAddTo(o.id); setMorePeople([]); }}>
+                            Add people
+                          </button>
+                        )}
+                        {o.status !== "deleted" && (
+                          <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming({ id: o.id, kind: "delete", typed: "" })}>
+                            Delete
+                          </button>
+                        )}
+                        {o.status === "deleted" && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy || !canErase(o.purgeAfter)}
+                            title={canErase(o.purgeAfter) ? undefined : "Allowed after the 30-day restore window"}
+                            onClick={() => setConfirming({ id: o.id, kind: "erase", typed: "" })}
+                          >
+                            Delete permanently
+                          </button>
+                        )}
+                      </div>
+                      {confirming?.id === o.id && (
+                        <div className="warn" style={{ marginTop: 10 }}>
+                          <p style={{ margin: "0 0 8px" }}>
+                            {confirming.kind === "delete"
+                              ? "Everyone in this organization is blocked at once. Nothing is erased, and you can restore it for 30 days."
+                              : "This erases the organization's data and the logins that belong only to it. It cannot be undone."}
+                            {" "}Type <strong>{o.name}</strong> to confirm.
+                          </p>
+                          <input
+                            aria-label="Type the organization name to confirm"
+                            value={confirming.typed}
+                            onChange={(e) => setConfirming({ ...confirming, typed: e.target.value })}
+                          />
+                          <div className="csv-actions">
+                            <button
+                              type="button"
+                              disabled={busy || confirming.typed.trim() !== o.name}
+                              onClick={() => void (confirming.kind === "delete" ? moveTo(o, "deleted", confirming.typed.trim()) : erase(o, confirming.typed.trim()))}
+                            >
+                              {confirming.kind === "delete" ? "Delete organization" : "Delete permanently"}
+                            </button>
+                            <button type="button" className="secondary" onClick={() => setConfirming(undefined)}>Cancel</button>
+                          </div>
+                        </div>
                       )}
                     </td>
                   </tr>

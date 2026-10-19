@@ -28,6 +28,7 @@ import { TargetEditor } from "./target-editor";
 import { CustomKpiForm } from "./custom-kpi";
 import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
+import { initialOf, roleLabel, viewingAs } from "./identity";
 import "./v2.css";
 type Tab =
   | "Dashboard"
@@ -81,6 +82,7 @@ export function SaasRoute() {
   const [loading, setLoading] = useState(true);
   const generation = useRef(0);
   const [askSeed, setAskSeed] = useState("");
+  const [email, setEmail] = useState("");
   const reload = useCallback(async () => {
     if (!tenant) return;
     const current = generation.current;
@@ -99,13 +101,15 @@ export function SaasRoute() {
     let active = true;
     // A temporary password must be replaced before anything else happens.
     void getCurrentSession().then((session) => {
-      if (active && session?.user.user_metadata?.must_change_password === true) window.location.replace("/change-password");
+      if (!active) return;
+      setEmail(session?.user.email ?? "");
+      if (session?.user.user_metadata?.must_change_password === true) window.location.replace("/change-password");
     });
     request("/api/saas/organizations", TenantListSchema)
       .then((rows) => {
         if (!active) return;
         setOrganizations(rows);
-        selectTenant(rows[0]?.id ?? "");
+        selectTenant((rows.find((r) => r.status === "active") ?? rows[0])?.id ?? "");
         if (rows.length === 0) {
           // A platform operator belongs to no organization. Send them to the
           // console instead of an empty customer dashboard.
@@ -126,9 +130,12 @@ export function SaasRoute() {
       active = false;
     };
   }, [selectTenant]);
+  // An organization that is not active has no workspace to load; the page explains why instead.
+  const closed = organizations.find((o) => o.id === tenant && o.status !== "active");
+  const isClosed = closed !== undefined;
   useEffect(() => {
     const current = generation.current;
-    if (!tenant) return;
+    if (!tenant || isClosed) return;
     request(`/api/saas/${tenant}/workspace`, WorkspaceSchema)
       .then((value) => {
         if (current !== generation.current) return;
@@ -141,7 +148,7 @@ export function SaasRoute() {
       .finally(() => {
         if (current === generation.current) setLoading(false);
       });
-  }, [tenant]);
+  }, [tenant, isClosed]);
   async function change(path: string, body: unknown): Promise<boolean> {
     const current = generation.current;
     setBusy(true);
@@ -191,6 +198,7 @@ export function SaasRoute() {
             {organizations.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
+                {o.status === "active" ? "" : ` (${o.status})`}
               </option>
             ))}
           </select>
@@ -211,11 +219,14 @@ export function SaasRoute() {
           ))}
         </nav>
         <div className="saas-sidebar-footer">
-          <p>
-            One workspace.
-            <br />
-            Your measures of progress.
-          </p>
+          <div className="whoami" aria-label="Signed in as">
+            <span className="whoami-avatar" aria-hidden="true">{initialOf(email)}</span>
+            <span className="whoami-text">
+              <strong title={email}>{email || "Signed in"}</strong>
+              <small>{roleLabel(workspace?.me) || (closed ? closed.status : "")}</small>
+              <small className="whoami-org">{workspace?.organization.name ?? closed?.name ?? ""}</small>
+            </span>
+          </div>
           <a href="/change-password">Account security</a>
           <button
             onClick={() =>
@@ -243,7 +254,10 @@ export function SaasRoute() {
             <div>
               <p className="eyebrow">MEASURE · UNDERSTAND · ACT</p>
               <h1>{tab}</h1>
-              <p className="muted">{description(tab)}</p>
+              <p className="muted">
+                {description(tab)}
+                {tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
+              </p>
             </div>
             <button
               className="secondary"
@@ -253,7 +267,7 @@ export function SaasRoute() {
             </button>
           </div>
           {message && <output className="saas-message">{message}</output>}
-          {loading && <Empty>Loading your authorized workspace…</Empty>}
+          {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
           {!loading && !tenant && (
             <Empty>
               <h2>Your workspace starts with an invitation</h2>
@@ -264,7 +278,31 @@ export function SaasRoute() {
               <a href="/operator">Open platform setup</a>
             </Empty>
           )}
-          {workspace && (
+          {closed && (
+            <Empty>
+              <div className="status-panel">
+                <p className="eyebrow">{closed.name.toUpperCase()}</p>
+                <h2>
+                  {closed.status === "pending"
+                    ? "Your organization is waiting to be activated"
+                    : closed.status === "suspended"
+                      ? "Your organization is suspended"
+                      : "This organization has been removed"}
+                </h2>
+                <p>
+                  {closed.status === "pending"
+                    ? "Your service provider is setting it up. You will be able to sign in and work as soon as they activate it."
+                    : closed.status === "suspended"
+                      ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
+                      : "It is no longer available. Contact your service provider if you think this is a mistake."}
+                </p>
+                <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
+                  Sign out
+                </button>
+              </div>
+            </Empty>
+          )}
+          {workspace && !closed && (
             <fieldset disabled={busy} className="saas-content" key={tenant}>
               {tab === "Dashboard" && (
                 <Dashboard
@@ -299,6 +337,8 @@ export function SaasRoute() {
                     workspace={workspace}
                     change={change}
                     goto={setTab}
+                    tenant={tenant}
+                    reload={reload}
                     governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
                   />
                 ) : (
