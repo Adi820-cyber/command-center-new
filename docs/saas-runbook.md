@@ -106,23 +106,29 @@ The backend refuses to start if both database credentials are set in one process
 4. The owner configures their organization units, roles, measures and KPI definitions, or reviews and accepts a platform configuration proposal. Customer owners approve KPI definitions and input batches.
 5. Add further members through owner-managed invitations. A tenant can have 3, 7, or a different number of members; no fixed fourteen-role catalog is required. The current CSV flow pastes aggregate rows into the app; it does not store uploaded files.
 
-## 6a. Create organizations from a template (version 2)
+## 6a. Create an organization (the operator gives the owner a login; the owner sets up the rest)
 
-In the control console (`/operator`):
+In the control console (`/operator`), the operator only creates the organization and its owner:
 
 1. Enter the organization name and the owner's email.
-2. Choose an industry template. It brings the KPIs, the roles and what each role can see.
-3. Add people: type them row by row, or paste a list, one person per line: `anita@acme.com, operations; data reviewer`. Roles may be written as the key or the name. Any number of people can be added now, or later with **Add people**.
-4. Press **Create organization**. What happens next depends on whether the control API has `SUPABASE_SECRET_KEY`:
+2. Confirm that the email belongs to the owner, and choose whether to activate it now.
+3. Press **Create organization**. What happens next depends on whether the control API has `SUPABASE_SECRET_KEY`:
 
-   - **With the key (temporary logins).** The control API creates a login in Supabase Auth for the owner and every person, each with its own random temporary password, and makes them members with their roles at once. The page lists each email with its temporary password, once. **Copy message** gives a ready-to-send note (sign-in address, email, password); **Download all (CSV)** saves everything. Nobody has to accept an invitation. The first time someone signs in they are taken to a page to choose their own password before they see anything else. Until they do, the temporary password is the only way in.
-   - **Without the key (invitation links).** The page lists one invitation link per person, once. Each works once, for the matching email, and expires in seven days.
+   - **With the key (temporary logins).** The control API creates the owner's login in Supabase Auth with a random temporary password, shown once. **Copy message** gives a ready-to-send note (sign-in address, email, password); **Download all (CSV)** saves everything. Nobody has to accept an invitation. The first time someone signs in they are taken to a page to choose their own password before they see anything else. Until they do, the temporary password is the only way in.
+   - **Without the key (invitation links).** The page shows the owner's invitation link, once. Each works once, for the matching email, and expires in seven days.
 
    Either way, someone who already has an account cannot be given a new password silently, so they get an invitation link instead and the console says so. The same email cannot be added to an organization twice.
 
    **Never use a platform operator's email for an owner or member.** Operator accounts cannot join organizations, so such an invitation could never be accepted. The database refuses it, and the console says: "That email belongs to a platform operator account. Use a separate email for the organization's owner and members." Use a separate address (for testing, a second mailbox or a `+` alias such as `you+owner@gmail.com`).
 
-   If creating any one login fails, the ones already made are removed and nothing is saved.
+   If creating the login fails, nothing is saved.
+
+**The owner sets up the organization.** On first sign-in (after choosing their own password), the owner's Organization page asks them to **choose a starting point**:
+
+- **An industry template**: its KPIs, roles and what each role sees, all of which the owner can change afterwards. A template can be used only while the organization has no KPIs and no roles, so it never duplicates what the owner made.
+- **Their own setup**: KPIs from the KPI library or written from scratch, then roles that choose which KPIs they see.
+
+The owner then adds units, adds people with logins and roles (**People**), sets targets, and retires or adds KPIs at any time. The operator's list shows which template the owner chose ("Owner still choosing" until then). The control API still accepts `templateId` and `members` when creating an organization, for scripted setups.
 
 **What the secret key can do, and why it is only on the control API.** It can create, change and delete any login in the project, which is far more than this feature needs. That is why the customer API (which reads customer data) must never have it, and why the configuration enforces that. It is a deliberate widening of what the control API can do: with the key, a compromise of the control API could alter logins, though it still has no read access to customer figures. If that is not acceptable for a customer, leave the key out and use invitation links. Rotate the key in Supabase if it is ever exposed.
 

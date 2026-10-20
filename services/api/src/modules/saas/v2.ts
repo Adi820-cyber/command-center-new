@@ -8,10 +8,12 @@ import {
   ProvisionRequestSchema,
   ProvisionResponseSchema,
   SetTargetRequestSchema,
+  StartFromTemplateRequestSchema,
   TemplateListSchema,
   WorkspaceAskRequestSchema,
   WorkspaceAskResponseSchema,
 } from "@orbit/contracts";
+import type { Tx } from "../../db/client.ts";
 import { narrate } from "../ask/narrator.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import { answerQuestion } from "./ask.ts";
@@ -44,6 +46,20 @@ const PLAIN_TOPICS = new Set(["unknown", "no_access", "no_data"]);
  * functions return only ids, so the operator creates an organisation, its
  * owner and its members without ever being able to read their data.
  */
+/** Every industry template with its roles, as reference data. */
+async function listTemplates(tx: Tx) {
+  return TemplateListSchema.parse(
+    await tx.query(`
+      select t.id, t.name, t.industry, t.description,
+        (select count(distinct x.kpi_id) from kpi_catalog.template_role_kpis x where x.template_id=t.id)::int as "kpiCount",
+        coalesce((select jsonb_agg(jsonb_build_object(
+            'key', r.role_key, 'name', r.name, 'description', r.description, 'capabilities', r.capabilities,
+            'kpiCount', (select count(*) from kpi_catalog.template_role_kpis x where x.template_id=r.template_id and x.role_key=r.role_key)
+          ) order by r.position) from kpi_catalog.template_roles r where r.template_id=t.id), '[]'::jsonb) as roles
+      from kpi_catalog.templates t order by t.name`),
+  );
+}
+
 export async function registerV2Routes(app: FastifyInstance, options: SaasOptions): Promise<void> {
   const { subject, tenant, control, requireOperator } = makeRunners(options);
   // The KPI catalog is reference data, the same for everyone who is signed in.
@@ -56,6 +72,19 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
         'select key,name,unit,description,rolls_up as "rollsUp",domain from kpi_catalog.measures order by key',
       );
       return CatalogResponseSchema.parse({ kpis, measures });
+    }),
+  );
+
+  // Industry templates, for an owner choosing a starting point.
+  app.get("/api/saas/templates", async (req) => inSubject(options.database, await subject(req), listTemplates));
+
+  // The owner starts an empty organisation from a template: its KPIs, roles and
+  // what each role sees. Only while it has no KPIs and no roles yet.
+  app.post("/api/saas/:tenantId/template", async (req) =>
+    tenant(req, async (tx, t) => {
+      const { templateId } = input(StartFromTemplateRequestSchema, req.body);
+      await tx.query("select kpi.start_from_template($1::uuid,$2)", [t, templateId]);
+      return { ok: true };
     }),
   );
 
@@ -106,20 +135,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
 
   // --- Operator ---------------------------------------------------------------
 
-  app.get("/api/control/templates", async (req) =>
-    control(req, async (tx) =>
-      TemplateListSchema.parse(
-        await tx.query(`
-          select t.id, t.name, t.industry, t.description,
-            (select count(distinct x.kpi_id) from kpi_catalog.template_role_kpis x where x.template_id=t.id)::int as "kpiCount",
-            coalesce((select jsonb_agg(jsonb_build_object(
-                'key', r.role_key, 'name', r.name, 'description', r.description, 'capabilities', r.capabilities,
-                'kpiCount', (select count(*) from kpi_catalog.template_role_kpis x where x.template_id=r.template_id and x.role_key=r.role_key)
-              ) order by r.position) from kpi_catalog.template_roles r where r.template_id=t.id), '[]'::jsonb) as roles
-          from kpi_catalog.templates t order by t.name`),
-      ),
-    ),
-  );
+  app.get("/api/control/templates", async (req) => control(req, listTemplates));
 
   // Creates an organisation: its owner, and optionally a template with members and roles.
   //

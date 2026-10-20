@@ -76,6 +76,8 @@ Runs the whole platform on one computer with no Supabase account: a throwaway Po
 
 With `VITE_IDENTITY_API_BASE_URL` set, the web app's change-password page uses the emailed code. Without it, the page changes the password directly.
 
+`e2e-owner-setup.mjs` checks that the operator creates an organization with only its owner, and that the owner chooses a template (only while the organization is empty, and only their own organization), customizes it, and adds people.
+
 Run `e2e.mjs` with `CONTROL_API=http://localhost:3104` pointing at a control API started without the key.
 
 The same database rules are also checked, inside a transaction that is rolled back, by `database/tests/v2-smoke.sql`.

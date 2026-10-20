@@ -184,6 +184,11 @@ export const ResetPasswordResponseSchema = z.strictObject({
 // Changing a password with an emailed code
 // ---------------------------------------------------------------------------
 
+/** The owner starts an empty organization from an industry template. */
+export const StartFromTemplateRequestSchema = z.strictObject({
+  templateId: z.string().regex(/^[a-z0-9-]{1,80}$/, "Choose a template."),
+});
+
 export const PasswordCodeResponseSchema = z.strictObject({
   /** Where the code went, partly hidden. */
   sentTo: z.string(),

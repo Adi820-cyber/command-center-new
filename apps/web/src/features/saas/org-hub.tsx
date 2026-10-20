@@ -1,5 +1,13 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { InviteMembersResponseSchema, ResetPasswordResponseSchema, roleDraftFromGrants, type Capability, type SaasWorkspace } from "@orbit/contracts";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  InviteMembersResponseSchema,
+  ResetPasswordResponseSchema,
+  roleDraftFromGrants,
+  TemplateListSchema,
+  type Capability,
+  type SaasWorkspace,
+  type TemplateSummary,
+} from "@orbit/contracts";
 import { AccessPanel, type IssuedSet } from "./access-panel";
 import { request } from "./client";
 import { domainTitle } from "./domains";
@@ -80,7 +88,17 @@ function Overview({
   const withTarget = active.filter((k) => k.target !== null).length;
   const people = w.members.filter((m) => m.active && !m.owner);
   const peopleWithRoles = people.filter((m) => m.roleIds.length > 0).length;
+  const fresh = w.kpis.length === 0 && w.roles.length === 0;
   const steps: { done: boolean; title: string; detail: string; action: () => void; cta: string }[] = [
+    {
+      done: !fresh,
+      title: "Starting point",
+      detail: fresh
+        ? "Start from an industry template, or build your roles and KPIs yourself."
+        : `${w.kpis.length} KPIs and ${w.roles.length} roles. Change any of them at any time.`,
+      action: () => (fresh ? document.getElementById("starting-point")?.scrollIntoView({ behavior: "smooth" }) : goto("KPI library")),
+      cta: fresh ? "Choose" : "KPI library",
+    },
     {
       done: w.units.length > 1,
       title: "Your structure",
@@ -121,6 +139,7 @@ function Overview({
 
   return (
     <>
+      {fresh && <StartingPoint change={change} goto={goto} open={open} />}
       <div className="saas-columns">
         <section className="saas-card">
           <h2>Organization details</h2>
@@ -164,6 +183,92 @@ function Overview({
       </div>
       {governance}
     </>
+  );
+}
+
+/**
+ * Shown while the organization has no KPIs and no roles: the owner decides how
+ * to begin. A template brings KPIs, roles and what each role sees; every part of
+ * it can be changed afterwards. Or the owner builds everything themselves.
+ */
+function StartingPoint({
+  change,
+  goto,
+  open,
+}: {
+  change: Change;
+  goto: (tab: "KPI library" | "Data & approvals" | "Dashboard") => void;
+  open: (s: Section) => void;
+}) {
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [chosen, setChosen] = useState("");
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    request("/api/saas/templates", TemplateListSchema)
+      .then((rows) => active && setTemplates(rows))
+      .catch((e: unknown) => active && setProblem(e instanceof Error ? e.message : "Templates could not be loaded."));
+    return () => {
+      active = false;
+    };
+  }, []);
+  const industries = useMemo(() => [...new Set(templates.map((t) => t.industry))], [templates]);
+  const template = templates.find((t) => t.id === chosen);
+
+  return (
+    <section className="saas-card" id="starting-point">
+      <h2>Choose your starting point</h2>
+      <p>
+        Your organization is ready and empty. Start from an industry template (its KPIs, roles and what each role sees), then
+        change anything you like. Or build your own roles and KPIs from the KPI library.
+      </p>
+      <label>
+        Industry template
+        <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
+          <option value="">Choose a template…</option>
+          {industries.map((industry) => (
+            <optgroup key={industry} label={industry.replaceAll("_", " ")}>
+              {templates
+                .filter((t) => t.industry === industry)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      {template && (
+        <div className="console-template">
+          <strong>{template.name}</strong>
+          <span>{template.description}</span>
+          <span className="muted">
+            {template.kpiCount} KPIs and {template.roles.length} roles: {template.roles.map((r) => r.name).join(", ")}.
+          </span>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+        <button
+          type="button"
+          disabled={!template || busy}
+          onClick={() => {
+            setBusy(true);
+            void change("/template", { templateId: chosen }).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Setting up…" : "Use this template"}
+        </button>
+        <button type="button" className="secondary" onClick={() => goto("KPI library")}>
+          Pick KPIs from the library
+        </button>
+        <button type="button" className="secondary" onClick={() => open("Roles & KPIs")}>
+          Create roles myself
+        </button>
+      </div>
+      {problem && <p className="muted">{problem}</p>}
+    </section>
   );
 }
 
