@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { randomInt } from "node:crypto";
-import { AddLoginsRequestSchema, ChangeOwnPasswordRequestSchema, InviteMembersResponseSchema, PasswordCodeResponseSchema } from "@orbit/contracts";
+import { AddLoginsRequestSchema, ChangeOwnPasswordRequestSchema, InviteMembersResponseSchema, PasswordCodeResponseSchema, ResetPasswordRequestSchema } from "@orbit/contracts";
 import { verifyAccessTokenClaims } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
@@ -42,7 +42,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     // 2. Create the logins, then the memberships in one step. If that step fails the
     //    logins just created are removed, so nothing is left behind.
     const prepared = await prepareLogins(
-      body.members.map((m) => ({ email: m.email, roleKeys: [], roleIds: m.roleIds })),
+      body.members.map((m) => ({ email: m.email, roleKeys: [], roleIds: m.roleIds, password: m.password })),
       options.authAdmin,
     );
     try {
@@ -66,6 +66,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
   // before the key is used.
   app.post("/api/identity/organizations/:tenantId/members/:memberId/reset-password", async (req) => {
     const { tenantId, memberId } = input(z.object({ tenantId: uuid, memberId: uuid }), req.params);
+    const body = req.body ? input(ResetPasswordRequestSchema.optional(), req.body) : undefined;
     if (!options.authAdmin) throw new ApiError("unavailable", "Resetting passwords is not set up on this deployment.");
     const sub = await subject(req);
     const login = await inSubject(
@@ -77,7 +78,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       },
       "kpi_identity_app",
     );
-    const password = temporaryPassword();
+    const password = body?.password?.trim() || temporaryPassword();
     await options.authAdmin.resetPassword(login, password);
     return { temporaryPassword: password };
   });

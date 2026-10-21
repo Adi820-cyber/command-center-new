@@ -911,3 +911,86 @@ fieldset.csv-choices {
   background: var(--soft);
   border-radius: 8px;
 }
+
+/* ---- Role Employee Login & Management ----------------------------------- */
+.role-add-login-panel {
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.role-add-login-panel h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.role-issued-credentials {
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--good-bg);
+  border: 1px solid var(--good);
+  border-radius: 10px;
+}
+.role-issued-credentials h2 {
+  font-size: 15px;
+  margin: 8px 0;
+}
+.role-members-box {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.role-members-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.role-members-list {
+  display: grid;
+  gap: 8px;
+}
+.role-member-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.role-member-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.role-member-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.role-member-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.saas-shell .role-member-actions button {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.role-member-inline-form {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 4px;
+}
+.role-member-inline-form h5 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+

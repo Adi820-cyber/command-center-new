@@ -169,11 +169,18 @@ export const AddLoginsRequestSchema = z.strictObject({
       z.strictObject({
         email: z.email(),
         roleIds: z.array(z.uuid()).min(1).max(10),
+        password: z.string().min(8, "Password must have at least 8 characters.").max(72).optional(),
       }),
     )
     .min(1)
     .max(50),
 });
+
+/** An owner can optionally provide a new password when resetting member credentials. */
+export const ResetPasswordRequestSchema = z.strictObject({
+  password: z.string().min(8, "Password must have at least 8 characters.").max(72).optional(),
+});
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
 
 /** A new temporary password for one person, shown to the owner once. */
 export const ResetPasswordResponseSchema = z.strictObject({

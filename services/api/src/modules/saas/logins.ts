@@ -10,6 +10,7 @@ export interface Person {
   /** Role ids (the owner's way). */
   roleIds?: string[];
   owner?: boolean;
+  password?: string;
 }
 
 /** What goes back to the operator for one person, once. */
@@ -61,7 +62,7 @@ export async function prepareLogins(people: readonly Person[], admin: AuthAdmin)
   try {
     for (const person of people) {
       const email = person.email.trim();
-      const password = temporaryPassword();
+      const password = person.password?.trim() || temporaryPassword();
       const result = await admin.createUser(email, password);
       if (result.status === "created") {
         created.push(result.id);

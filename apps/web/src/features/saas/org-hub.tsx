@@ -61,7 +61,7 @@ export function OrgHub({
         ))}
       </nav>
       {section === "Overview" && <Overview w={w} change={change} goto={goto} open={setSection} governance={governance} />}
-      {section === "Roles & KPIs" && <Roles w={w} change={change} />}
+      {section === "Roles & KPIs" && <Roles w={w} change={change} tenant={tenant} reload={reload} />}
       {section === "People" && <People w={w} change={change} tenant={tenant} reload={reload} />}
       {section === "Units" && <Units w={w} change={change} />}
     </>
@@ -284,8 +284,52 @@ interface Editing {
   custom: boolean;
 }
 
-function Roles({ w, change }: { w: SaasWorkspace; change: Change }) {
+function makeRandomPassword(): string {
+  const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const LOWER = "abcdefghijkmnpqrstuvwxyz";
+  const DIGITS = "23456789";
+  const pick = (set: string) => set[Math.floor(Math.random() * set.length)]!;
+  const chars = [pick(UPPER), pick(UPPER), pick(UPPER), pick(LOWER), pick(LOWER), pick(LOWER), pick(LOWER), pick(DIGITS), pick(DIGITS), pick(DIGITS)];
+  const all = UPPER + LOWER + DIGITS;
+  while (chars.length < 12) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+  }
+  const text = chars.join("");
+  return `${text.slice(0, 4)}-${text.slice(4, 8)}-${text.slice(8, 12)}`;
+}
+
+function Roles({
+  w,
+  change,
+  tenant,
+  reload,
+}: {
+  w: SaasWorkspace;
+  change: Change;
+  tenant: string;
+  reload: () => Promise<void>;
+}) {
   const [editing, setEditing] = useState<Editing>();
+  const [addingRoleId, setAddingRoleId] = useState<string>();
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [issuedForRole, setIssuedForRole] = useState<{ roleId: string; set: IssuedSet }>();
+
+  const [resettingMemberId, setResettingMemberId] = useState<string>();
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const [editingMemberId, setEditingMemberId] = useState<string>();
+  const [editingMemberRoles, setEditingMemberRoles] = useState<string[]>([]);
+
+  const canCreateLogins = Boolean(import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
+  const roleName = new Map(w.roles.map((r) => [r.id, r.name]));
   const holders = (roleId: string) => w.members.filter((m) => m.active && m.roleIds.includes(roleId)).length;
   const unitName = (id: string | null) => (id ? w.units.find((u) => u.id === id)?.name ?? "a unit" : "The whole organization");
   const kpiName = new Map(w.kpis.map((k) => [k.id, k.name]));
@@ -298,6 +342,76 @@ function Roles({ w, change }: { w: SaasWorkspace; change: Change }) {
     }
     const draft = roleDraftFromGrants(role.grants);
     setEditing({ roleId: role.id, name: role.name, ...draft });
+  }
+
+  async function handleCreateRoleLogin(roleId: string, roleNameStr: string) {
+    if (!loginEmail.trim() || loginPassword.length < 8) return;
+    setLoginBusy(true);
+    setLoginError("");
+    setIssuedForRole(undefined);
+    try {
+      const result = await request(
+        `/api/identity/organizations/${tenant}/people`,
+        InviteMembersResponseSchema,
+        {
+          members: [{
+            email: loginEmail.trim(),
+            roleIds: [roleId],
+            password: loginPassword.trim() || undefined,
+          }],
+        }
+      );
+      setIssuedForRole({
+        roleId,
+        set: {
+          title: `Credentials created for ${roleNameStr}`,
+          mode: result.mode,
+          people: result.members,
+        },
+      });
+      setLoginEmail("");
+      setLoginPassword(makeRandomPassword());
+      setAddingRoleId(undefined);
+      await reload();
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Unable to create login.");
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function handleResetPassword(member: SaasWorkspace["members"][number], roleId: string) {
+    const who = member.email ?? member.displayName;
+    if (resetPasswordValue.length < 8) {
+      alert("Password must be at least 8 characters.");
+      return;
+    }
+    setResetBusy(true);
+    try {
+      const result = await request(
+        `/api/identity/organizations/${tenant}/members/${member.id}/reset-password`,
+        ResetPasswordResponseSchema,
+        { password: resetPasswordValue.trim() || undefined }
+      );
+      setIssuedForRole({
+        roleId,
+        set: {
+          title: `New credentials for ${who}`,
+          mode: "logins",
+          people: [{
+            email: who,
+            roleKeys: member.roleIds,
+            temporaryPassword: result.temporaryPassword,
+          }],
+        },
+      });
+      setResettingMemberId(undefined);
+      await reload();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Unable to change credentials.");
+    } finally {
+      setResetBusy(false);
+    }
   }
 
   return (
@@ -320,6 +434,9 @@ function Roles({ w, change }: { w: SaasWorkspace; change: Change }) {
           const count = holders(role.id);
           const isOpen = editing?.roleId === role.id;
           const sees = draft.capabilities.some((c) => c === "view" || c === "act");
+          const isAddingLogin = addingRoleId === role.id;
+          const roleMembers = w.members.filter((m) => m.roleIds.includes(role.id));
+
           return (
             <section key={role.id} className={`saas-card role-card ${isOpen ? "open" : ""}`}>
               <div className="saas-card-title">
@@ -331,6 +448,24 @@ function Roles({ w, change }: { w: SaasWorkspace; change: Change }) {
                   </p>
                 </div>
                 <div className="csv-actions" style={{ marginTop: 0 }}>
+                  {canCreateLogins && (
+                    <button
+                      type="button"
+                      className={isAddingLogin ? "" : "secondary"}
+                      onClick={() => {
+                        if (isAddingLogin) {
+                          setAddingRoleId(undefined);
+                        } else {
+                          setAddingRoleId(role.id);
+                          setLoginEmail("");
+                          setLoginPassword(makeRandomPassword());
+                          setLoginError("");
+                        }
+                      }}
+                    >
+                      {isAddingLogin ? "Close login form" : "+ Add employee login"}
+                    </button>
+                  )}
                   <button type="button" className="secondary" onClick={() => (isOpen ? setEditing(undefined) : edit(role.id))}>
                     {isOpen ? "Close" : "Edit"}
                   </button>
@@ -359,6 +494,275 @@ function Roles({ w, change }: { w: SaasWorkspace; change: Change }) {
                   <p className="muted">{draft.kpiIds.map((id) => kpiName.get(id) ?? "Retired KPI").join(" · ")}</p>
                 </details>
               )}
+
+              {/* Add login credentials panel for this role */}
+              {isAddingLogin && (
+                <div className="role-add-login-panel">
+                  <h4>Add employee login for {role.name}</h4>
+                  <p className="muted" style={{ margin: "2px 0 10px", fontSize: 13 }}>
+                    Set up an email and password for this employee. You can provide these credentials directly to them.
+                  </p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleCreateRoleLogin(role.id, role.name);
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <label>
+                        Employee email
+                        <input
+                          type="email"
+                          required
+                          placeholder="employee@company.com"
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Password
+                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            required
+                            minLength={8}
+                            placeholder="Min 8 characters"
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            style={{ flex: 1, fontFamily: "ui-monospace, monospace" }}
+                          />
+                          <button
+                            type="button"
+                            className="secondary"
+                            title="Generate a secure temporary password"
+                            onClick={() => setLoginPassword(makeRandomPassword())}
+                          >
+                            🎲 Random
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                        <small className="muted" style={{ display: "block", marginTop: 4 }}>
+                          Min 8 characters. You can provide this password directly to the employee.
+                        </small>
+                      </label>
+                      {loginError && <p role="alert" className="errors">{loginError}</p>}
+                      <div className="csv-actions" style={{ marginTop: 4 }}>
+                        <button type="submit" disabled={loginBusy || !loginEmail.trim() || loginPassword.length < 8}>
+                          {loginBusy ? "Creating login…" : "Create employee login"}
+                        </button>
+                        <button type="button" className="secondary" onClick={() => setAddingRoleId(undefined)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Show newly issued credentials banner for this role */}
+              {issuedForRole?.roleId === role.id && (
+                <div className="role-issued-credentials">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <strong style={{ color: "var(--good)" }}>✓ Credentials created — ready to provide to employee</strong>
+                    <button type="button" className="secondary" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => setIssuedForRole(undefined)}>
+                      Done
+                    </button>
+                  </div>
+                  <AccessPanel set={issuedForRole.set} roleName={(key) => roleName.get(key) ?? key} />
+                </div>
+              )}
+
+              {/* People assigned to this role */}
+              <div className="role-members-box">
+                <div className="role-members-header">
+                  <strong>People in this role ({roleMembers.length})</strong>
+                </div>
+                {roleMembers.length === 0 ? (
+                  <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+                    No one has been assigned to this role yet. Click <strong>+ Add employee login</strong> above to create credentials.
+                  </p>
+                ) : (
+                  <div className="role-members-list">
+                    {roleMembers.map((m) => (
+                      <div key={m.id} className="role-member-item">
+                        <div className="role-member-top">
+                          <div className="role-member-info">
+                            <strong>{m.subject === w.subject ? `${m.displayName} (You)` : m.displayName}</strong>
+                            {m.email && <span className="muted">({m.email})</span>}
+                            {!m.active && <span className="saas-badge bad">Revoked</span>}
+                            {m.owner && <span className="saas-badge good">Owner</span>}
+                            {m.roleIds.length > 1 && (
+                              <span className="muted" style={{ fontSize: 12 }}>
+                                +{m.roleIds.length - 1} other role{m.roleIds.length > 2 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                          {!m.owner && (
+                            <div className="role-member-actions">
+                              {m.active && canCreateLogins && (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    setResettingMemberId(resettingMemberId === m.id ? undefined : m.id);
+                                    setResetPasswordValue(makeRandomPassword());
+                                  }}
+                                >
+                                  {resettingMemberId === m.id ? "Cancel" : "Change credentials"}
+                                </button>
+                              )}
+                              {m.active && (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    setEditingMemberId(editingMemberId === m.id ? undefined : m.id);
+                                    setEditingMemberRoles(m.roleIds);
+                                  }}
+                                >
+                                  {editingMemberId === m.id ? "Cancel" : "Edit roles"}
+                                </button>
+                              )}
+                              {m.active && (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    if (window.confirm(`Remove ${m.email ?? m.displayName} from the role "${role.name}"?`)) {
+                                      const newRoles = m.roleIds.filter((id) => id !== role.id);
+                                      void change(`/members/${m.id}/roles`, { roleIds: newRoles }).then(() => reload());
+                                    }
+                                  }}
+                                >
+                                  Remove from role
+                                </button>
+                              )}
+                              {m.active ? (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => {
+                                    if (window.confirm(`Revoke access for ${m.email ?? m.displayName}?`)) {
+                                      void change(`/members/${m.id}/revoke`, {}).then(() => reload());
+                                    }
+                                  }}
+                                >
+                                  Revoke
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={() => void change(`/members/${m.id}/restore`, {}).then(() => reload())}
+                                >
+                                  Restore
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Inline Change Credentials */}
+                        {resettingMemberId === m.id && (
+                          <div className="role-member-inline-form">
+                            <h5>Change credentials for {m.email ?? m.displayName}</h5>
+                            <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
+                              Enter a new password or generate a random one. Provide it directly to the employee.
+                            </p>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <input
+                                type={showResetPassword ? "text" : "password"}
+                                value={resetPasswordValue}
+                                minLength={8}
+                                onChange={(e) => setResetPasswordValue(e.target.value)}
+                                placeholder="New password (min 8 chars)"
+                                style={{ flex: "1 1 200px", fontFamily: "ui-monospace, monospace" }}
+                              />
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => setResetPasswordValue(makeRandomPassword())}
+                              >
+                                🎲 Random
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => setShowResetPassword(!showResetPassword)}
+                              >
+                                {showResetPassword ? "Hide" : "Show"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={resetBusy || resetPasswordValue.length < 8}
+                                onClick={() => void handleResetPassword(m, role.id)}
+                              >
+                                {resetBusy ? "Updating…" : "Update credentials"}
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => setResettingMemberId(undefined)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Inline Edit Roles */}
+                        {editingMemberId === m.id && (
+                          <div className="role-member-inline-form">
+                            <h5>Edit roles for {m.email ?? m.displayName}</h5>
+                            <div className="console-roles" style={{ margin: "8px 0" }}>
+                              {w.roles.map((r) => (
+                                <label key={r.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={editingMemberRoles.includes(r.id)}
+                                    onChange={() =>
+                                      setEditingMemberRoles(
+                                        editingMemberRoles.includes(r.id)
+                                          ? editingMemberRoles.filter((id) => id !== r.id)
+                                          : [...editingMemberRoles, r.id]
+                                      )
+                                    }
+                                  />
+                                  {r.name}
+                                </label>
+                              ))}
+                            </div>
+                            <div className="csv-actions" style={{ marginTop: 4 }}>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const ok = await change(`/members/${m.id}/roles`, { roleIds: editingMemberRoles });
+                                  if (ok) {
+                                    setEditingMemberId(undefined);
+                                    await reload();
+                                  }
+                                }}
+                              >
+                                Save roles
+                              </button>
+                              <button type="button" className="secondary" onClick={() => setEditingMemberId(undefined)}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {isOpen && editing && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} />}
             </section>
           );
