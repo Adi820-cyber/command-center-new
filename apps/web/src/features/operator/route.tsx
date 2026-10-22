@@ -22,7 +22,7 @@ const onSubmitAsync =
   };
 
 
-type Access = "checking" | "granted" | "denied";
+type Access = "checking" | "granted" | "denied" | "unreachable";
 
 export function OperatorConsoleRoute() {
   const [access, setAccess] = useState<Access>("checking");
@@ -54,8 +54,19 @@ export function OperatorConsoleRoute() {
       })
       .catch((e) => {
         if (!active) return;
-        setAccess("denied");
-        setMessage(e instanceof Error ? e.message : "Access could not be checked.");
+        const msg = e instanceof Error ? e.message : "Access could not be checked.";
+        setMessage(msg);
+        if (
+          msg.includes("API address is not configured") ||
+          msg.includes("Failed to fetch") ||
+          msg.includes("could not reach") ||
+          msg.includes("NetworkError") ||
+          msg.includes("Load failed")
+        ) {
+          setAccess("unreachable");
+        } else {
+          setAccess("denied");
+        }
       });
     return () => {
       active = false;
@@ -148,21 +159,36 @@ export function OperatorConsoleRoute() {
   }
 
   if (access !== "granted") {
+    const isUnreachable = access === "unreachable";
     return (
       <main className="saas-console">
         <p className="eyebrow">PLATFORM SETUP</p>
-        <h1>{access === "checking" ? "Checking your access…" : "This account is not a platform operator"}</h1>
-        {access === "denied" && (
+        <h1>
+          {access === "checking"
+            ? "Checking your access…"
+            : isUnreachable
+              ? "Control API service is not connected"
+              : "This account is not a platform operator"}
+        </h1>
+        {access !== "checking" && (
           <>
             <p>
-              {email ? <>You are signed in as <strong>{email}</strong>. </> : null}
-              Only platform operator accounts can create organizations. A customer account (an owner or a member) works in its own workspace instead.
+              {email ? <>Signed in as <strong>{email}</strong>. </> : null}
+              {isUnreachable ? (
+                <>
+                  The frontend cannot communicate with the platform Control API service.
+                  Please ensure the Control API backend is running and reachable.
+                </>
+              ) : (
+                <>
+                  Only platform operator accounts can create organizations. A customer account (an owner or a member) works in its own workspace instead.
+                </>
+              )}
             </p>
-            <p className="muted">{message}</p>
+            <p className="muted" style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 6, border: "1px solid #e2e8f0" }}>
+              {message}
+            </p>
             <div className="csv-actions">
-              <a href="/">
-                <button type="button">Open my workspace</button>
-              </a>
               <button
                 type="button"
                 className="secondary"

@@ -1,5 +1,16 @@
 import { ErrorEnvelopeSchema, MutationResponseSchema } from "@orbit/contracts";
 import { getCurrentSession } from "../../lib/auth";
+function resolveApiBase(path: string): string {
+  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  if (path.startsWith("/api/control/")) {
+    return (import.meta.env.VITE_CONTROL_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3001" : "https://cmd-control-api-mc-bc.vercel.app")).replace(/\/+$/, "");
+  }
+  if (path.startsWith("/api/identity/")) {
+    return (import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3002" : "https://cmd-identity-api-mc-bc.vercel.app")).replace(/\/+$/, "");
+  }
+  return (import.meta.env.VITE_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3000" : "https://cmd-api-mc-bc.vercel.app")).replace(/\/+$/, "");
+}
+
 export async function request<T>(
   path: string,
   schema: { parse(value: unknown): T },
@@ -10,12 +21,7 @@ export async function request<T>(
     window.location.assign("/login");
     throw new Error("Please sign in.");
   }
-  const configuredBase = path.startsWith('/api/control/')
-    ? import.meta.env.VITE_CONTROL_API_BASE_URL
-    : path.startsWith('/api/identity/')
-      ? import.meta.env.VITE_IDENTITY_API_BASE_URL
-      : import.meta.env.VITE_API_BASE_URL;
-  const base = configuredBase?.trim().replace(/\/+$/, "");
+  const base = resolveApiBase(path);
   if (!base) throw new Error("The API address is not configured.");
   const response = await fetch(`${base}${path}`, {
     method: body === undefined ? "GET" : "POST",
