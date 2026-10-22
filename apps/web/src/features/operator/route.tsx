@@ -49,7 +49,11 @@ export function OperatorConsoleRoute() {
         setAccess("granted");
         request("/api/control/organizations", ControlOrganizationListSchema)
           .then((rows) => active && setOrganizations(rows))
-          .catch((e) => active && setMessage(e.message));
+          .catch((e) => {
+            if (!active) return;
+            const msg = e instanceof Error ? e.message : "Unable to load organizations.";
+            setMessage(msg.startsWith("[") && msg.includes("expected") ? "Unable to parse organization response from control API." : msg);
+          });
         request("/api/control/templates", TemplateListSchema)
           .then((rows) => active && setTemplates(rows))
           .catch((e) => active && setMessage(`The industry templates could not be loaded: ${e.message}`));

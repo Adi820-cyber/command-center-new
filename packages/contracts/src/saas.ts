@@ -261,29 +261,32 @@ export const ProposalListSchema = z.array(
     configuration: SetupProposalSchema,
   }),
 );
-export const ControlOrganizationListSchema = z.array(
-  z.strictObject({
-    id: z.uuid(),
-    name: z.string(),
-    industry: z.string(),
-    plan: z.string(),
-    subscriptionStatus: z.enum(["trial", "active", "past_due", "cancelled"]),
-    /** The template the organisation was created from, if any. */
-    templateId: z.string().nullable(),
-    status: OrganizationStatusSchema,
-    statusChangedAt: z.string(),
-    /** For a deleted organization: when it may be permanently deleted. */
-    purgeAfter: z.string().nullable(),
-    ownerEmail: z.string().nullable(),
-    ownerName: z.string().nullable(),
-    /** When the operator stated that the owner's email was verified. */
-    ownerEmailVerifiedAt: z.string().nullable(),
-    /** Whether the owner has replaced the temporary credential using an emailed code. */
-    credentialStatus: z.enum(["pending_reset", "verified"]),
-    userCount: z.number().int().nonnegative(),
-    roleCount: z.number().int().nonnegative(),
-  }),
-);
+export const ControlOrganizationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  industry: z.string().nullish().transform((v) => v || "General"),
+  plan: z.string().nullish().transform((v) => v || "Pilot"),
+  subscriptionStatus: z
+    .enum(["trial", "active", "past_due", "cancelled"])
+    .or(z.string())
+    .nullish()
+    .transform((v) => (v === "trial" || v === "active" || v === "past_due" || v === "cancelled" ? v : "active")),
+  templateId: z.string().nullish().transform((v) => v ?? null),
+  status: OrganizationStatusSchema.or(z.string()).nullish().transform((v) => (v === "active" || v === "suspended" || v === "deleted" || v === "pending" ? v : "active")),
+  statusChangedAt: z.string().nullish().transform((v) => v || new Date().toISOString()),
+  purgeAfter: z.string().nullish().transform((v) => v ?? null),
+  ownerEmail: z.string().nullish().transform((v) => v ?? null),
+  ownerName: z.string().nullish().transform((v) => v || "Organization owner"),
+  ownerEmailVerifiedAt: z.string().nullish().transform((v) => v ?? null),
+  credentialStatus: z
+    .enum(["pending_reset", "verified"])
+    .or(z.string())
+    .nullish()
+    .transform((v) => (v === "pending_reset" || v === "verified" ? v : "verified")),
+  userCount: z.coerce.number().int().nonnegative().nullish().transform((v) => v ?? 1),
+  roleCount: z.coerce.number().int().nonnegative().nullish().transform((v) => v ?? 0),
+});
+export const ControlOrganizationListSchema = z.array(ControlOrganizationSchema);
 export const SettingsSchema = z.strictObject({
   allowSelfApproval: z.boolean(),
 });

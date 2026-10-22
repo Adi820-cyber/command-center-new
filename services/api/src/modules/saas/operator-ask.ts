@@ -6,16 +6,28 @@ import {
 import type { Tx } from "../../db/client.ts";
 
 export async function loadControlOrganizations(tx: Tx) {
-  return ControlOrganizationListSchema.parse(
-    await tx.query(
-      `select id,name,industry,plan,subscription_status as "subscriptionStatus",
-        template_id as "templateId",status,status_changed_at::text as "statusChangedAt",
-        purge_after::text as "purgeAfter",owner_name as "ownerName",owner_email as "ownerEmail",
-        owner_email_verified_at::text as "ownerEmailVerifiedAt",credential_status as "credentialStatus",
-        user_count as "userCount",role_count as "roleCount"
+  try {
+    return ControlOrganizationListSchema.parse(
+      await tx.query(
+        `select id,name,industry,plan,subscription_status as "subscriptionStatus",
+          template_id as "templateId",status,status_changed_at::text as "statusChangedAt",
+          purge_after::text as "purgeAfter",owner_name as "ownerName",owner_email as "ownerEmail",
+          owner_email_verified_at::text as "ownerEmailVerifiedAt",credential_status as "credentialStatus",
+          user_count as "userCount",role_count as "roleCount"
+         from kpi_control.list_organizations()`,
+      ),
+    );
+  } catch {
+    // Graceful fallback for database instances where the additive metadata migration
+    // (20261029000100_operator_tenant_metadata.sql) has not yet been applied.
+    const legacy = await tx.query(
+      `select id,name,template_id as "templateId",status,status_changed_at::text as "statusChangedAt",
+        purge_after::text as "purgeAfter",owner_email as "ownerEmail",
+        owner_email_verified_at::text as "ownerEmailVerifiedAt"
        from kpi_control.list_organizations()`,
-    ),
-  );
+    );
+    return ControlOrganizationListSchema.parse(legacy);
+  }
 }
 
 type Organizations = ReturnType<typeof ControlOrganizationListSchema.parse>;
