@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { MutationResponseSchema, PasswordCodeResponseSchema } from "@orbit/contracts";
+import { KeyRound, ShieldCheck, Mail, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import { getAuthClient, getCurrentSession } from "../../lib/auth";
 import { request } from "../saas/client";
 
@@ -96,56 +97,166 @@ export function ChangePasswordRoute() {
   }
 
   const passwordFields = (
-    <>
-      <label>
-        New password
-        <input name="password" type="password" minLength={12} maxLength={72} required autoComplete="new-password" />
-      </label>
-      <label>
-        Confirm password
-        <input name="confirmation" type="password" minLength={12} maxLength={72} required autoComplete="new-password" />
-      </label>
-      <p className="muted" style={{ margin: 0 }}>At least 12 characters, and not your email address.</p>
-    </>
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+          New password
+        </label>
+        <input
+          name="password"
+          type="password"
+          minLength={12}
+          maxLength={72}
+          required
+          autoComplete="new-password"
+          placeholder="••••••••••••"
+          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+          Confirm password
+        </label>
+        <input
+          name="confirmation"
+          type="password"
+          minLength={12}
+          maxLength={72}
+          required
+          autoComplete="new-password"
+          placeholder="••••••••••••"
+          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        />
+      </div>
+      <p className="text-xs text-slate-400">At least 12 characters, and not your email address.</p>
+    </div>
   );
 
   return (
-    <main className="saas-auth">
-      <h1>{firstTime ? "Choose your own password" : "Change password"}</h1>
-      {firstTime && <p>You signed in with a temporary password. Choose your own now, and then your workspace opens.</p>}
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-950/95" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+        {/* Header */}
+        <div className="p-6 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 mb-3 shadow-2xs">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+            Security Authorization
+          </span>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+            {firstTime ? "Set Up Your Permanent Password" : "Change Password"}
+          </h1>
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            {firstTime
+              ? "You signed in with a temporary password. Choose your permanent password to unlock your workspace."
+              : "Update your credentials to maintain executive audit compliance."}
+          </p>
+        </div>
 
-      {step === "done" ? null : direct ? (
-        <form onSubmit={(event) => void submit(event)}>
-          {passwordFields}
-          <button disabled={busy}>Save password</button>
-        </form>
-      ) : step === "start" ? (
-        <>
-          <p>
-            To keep your account safe, we first send a 6-digit code to <strong>{email || "your email"}</strong>.
-          </p>
-          <button type="button" disabled={busy} onClick={() => void sendCode()}>
-            {busy ? "Sending…" : "Email me a code"}
-          </button>
-        </>
-      ) : (
-        <form onSubmit={(event) => void submit(event)}>
-          <p>
-            We sent a code to <strong>{sentTo}</strong>. It works for 10 minutes. Check your spam folder if it is not there.
-          </p>
-          <label>
-            Code from the email
-            <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required placeholder="123456" />
-          </label>
-          {passwordFields}
-          <button disabled={busy}>{busy ? "Saving…" : "Change password"}</button>
-          <button type="button" className="secondary" disabled={busy || cooldown > 0} onClick={() => void sendCode()}>
-            {cooldown > 0 ? `Send a new code in ${cooldown}s` : "Send a new code"}
-          </button>
-        </form>
-      )}
-      <output>{message}</output>
-      {!firstTime && <a href="/">Return to workspace</a>}
-    </main>
+        <div className="p-6 space-y-5">
+          {message && (
+            <div className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 ${
+              step === "done"
+                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                : "bg-rose-50 text-rose-800 border border-rose-200"
+            }`}>
+              {step === "done" ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0" />}
+              <span>{message}</span>
+            </div>
+          )}
+
+          {step === "done" ? (
+            <div className="text-center py-4 space-y-3">
+              <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto animate-bounce" />
+              <p className="text-sm font-bold text-slate-800">Password successfully updated!</p>
+              <a
+                href="/"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors"
+              >
+                Go to Command Center
+              </a>
+            </div>
+          ) : direct ? (
+            <form onSubmit={(event) => void submit(event)} className="space-y-4">
+              {passwordFields}
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Save Password</span>
+              </button>
+            </form>
+          ) : step === "start" ? (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                To keep your account secure, an authorization code will be transmitted to{" "}
+                <strong className="text-slate-900 font-mono">{email || "your work email"}</strong>.
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void sendCode()}
+                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                <span>{busy ? "Transmitting Code…" : "Email Me Authorization Code"}</span>
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={(event) => void submit(event)} className="space-y-4">
+              <div className="p-3 bg-blue-50/70 border border-blue-200/60 rounded-xl text-xs text-blue-900">
+                A verification code was dispatched to <strong>{sentTo}</strong> (valid for 10 minutes).
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  6-digit Verification Code
+                </label>
+                <input
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  required
+                  placeholder="123456"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono tracking-widest text-center focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              {passwordFields}
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Update Password</span>
+              </button>
+              <button
+                type="button"
+                disabled={busy || cooldown > 0}
+                onClick={() => void sendCode()}
+                className="w-full py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+              </button>
+            </form>
+          )}
+
+          {!firstTime && (
+            <div className="pt-3 border-t border-slate-100 text-center">
+              <a
+                href="/"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                <span>Return to Workspace</span>
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

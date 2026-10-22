@@ -9,8 +9,6 @@ import {
 } from "react";
 import {
   MutationResponseSchema,
-  ResultSchema,
-  type SaasResult,
   SettingsSchema,
   ProposalListSchema,
   AuditResponseSchema,
@@ -30,25 +28,26 @@ import { CustomKpiForm } from "./custom-kpi";
 import { KpiActions } from "./kpi-actions";
 import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
-import { initialOf, roleLabel, viewingAs } from "./identity";
+import { Sidebar } from "./components/Sidebar";
+import { Header } from "./components/Header";
+import { ContextBar } from "./components/ContextBar";
+import { ToastContainer, type ToastItem } from "./components/ToastContainer";
+import { AskAnythingModal } from "./components/AskAnythingModal";
+import { KpiDashboardView } from "./kpi-dashboard-view";
+import { ActionCenterView } from "./action-center-view";
+import { UnitsView } from "./units-view";
 import "./v2.css";
-type Tab =
+
+export type Tab =
   | "Dashboard"
-  | "Ask"
-  | "Data & approvals"
-  | "KPI library"
+  | "KPI Dashboard"
   | "Actions"
+  | "Units"
+  | "KPI library"
+  | "Data & approvals"
   | "Organization"
-  | "Activity";
-const tabs: Tab[] = [
-  "Dashboard",
-  "Ask",
-  "Data & approvals",
-  "KPI library",
-  "Actions",
-  "Organization",
-  "Activity",
-];
+  | "Activity"
+  | "Ask";
 const text = (data: FormData, key: string) => {
   const value = data.get(key);
   return typeof value === "string" ? value.trim() : "";
@@ -60,9 +59,6 @@ function Field({ title, children }: { title: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-function Empty({ children }: { children: ReactNode }) {
-  return <div className="saas-empty">{children}</div>;
 }
 const onClickAsync = (fn: () => Promise<void>) => () => {
   void fn();
@@ -85,12 +81,36 @@ export function SaasRoute() {
   const generation = useRef(0);
   const [askSeed, setAskSeed] = useState("");
   const [email, setEmail] = useState("");
+
+  // Executive Shell UI States
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedUnitId, setSelectedUnitId] = useState("");
+  const [selectedDomain, setSelectedDomain] = useState("all");
+  const [selectedPeriodType, setSelectedPeriodType] = useState<"M" | "Q" | "YTD" | "Y">("M");
+  const [isAskAiOpen, setIsAskAiOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = useCallback((t: Omit<ToastItem, "id">) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { ...t, id }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 4500);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const reload = useCallback(async () => {
     if (!tenant) return;
     const current = generation.current;
     const updated = await request(`/api/saas/${tenant}/workspace`, WorkspaceSchema);
     if (current === generation.current) setWorkspace(updated);
   }, [tenant]);
+
   const selectTenant = useCallback((id: string) => {
     ++generation.current;
     setWorkspace(undefined);
@@ -99,9 +119,9 @@ export function SaasRoute() {
     setLoading(!!id);
     setTenant(id);
   }, []);
+
   useEffect(() => {
     let active = true;
-    // A temporary password must be replaced before anything else happens.
     void getCurrentSession().then((session) => {
       if (!active) return;
       setEmail(session?.user.email ?? "");
@@ -113,8 +133,6 @@ export function SaasRoute() {
         setOrganizations(rows);
         selectTenant((rows.find((r) => r.status === "active") ?? rows[0])?.id ?? "");
         if (rows.length === 0) {
-          // A platform operator belongs to no organization. Send them to the
-          // console instead of an empty customer dashboard.
           request("/api/control/me", MutationResponseSchema)
             .then(() => {
               if (active) window.location.replace("/operator");
@@ -132,9 +150,10 @@ export function SaasRoute() {
       active = false;
     };
   }, [selectTenant]);
-  // An organization that is not active has no workspace to load; the page explains why instead.
+
   const closed = organizations.find((o) => o.id === tenant && o.status !== "active");
   const isClosed = closed !== undefined;
+
   useEffect(() => {
     const current = generation.current;
     if (!tenant || isClosed) return;
@@ -151,6 +170,7 @@ export function SaasRoute() {
         if (current === generation.current) setLoading(false);
       });
   }, [tenant, isClosed]);
+
   async function change(path: string, body: unknown): Promise<boolean> {
     const current = generation.current;
     setBusy(true);
@@ -163,217 +183,228 @@ export function SaasRoute() {
       );
       if (current === generation.current) {
         setWorkspace(updated);
-        setMessage(
-          result.token
-            ? `Invitation: ${window.location.origin}/invite#${result.token}`
-            : "Saved. Your workspace is up to date.",
-        );
+        const notice = result.token
+          ? `Invitation: ${window.location.origin}/invite#${result.token}`
+          : "Saved. Your workspace is up to date.";
+        setMessage(notice);
+        addToast({
+          type: "success",
+          title: "Saved Successfully",
+          message: notice,
+        });
       }
       return true;
     } catch (e) {
-      if (current === generation.current)
-        setMessage(e instanceof Error ? e.message : "Unable to save.");
+      const msg = e instanceof Error ? e.message : "Unable to save.";
+      if (current === generation.current) {
+        setMessage(msg);
+        addToast({
+          type: "error",
+          title: "Operation Failed",
+          message: msg,
+        });
+      }
       return false;
     } finally {
       if (current === generation.current) setBusy(false);
     }
   }
+
   return (
-    <div className="saas-shell">
-      <aside className="saas-sidebar">
-        <a className="saas-brand" href="/">
-          ◈{" "}
-          <span>
-            Command Center<small>PERFORMANCE WORKSPACE</small>
-          </span>
-        </a>
-        <Field title="Organization">
-          <select
-            aria-label="Organization"
-            value={tenant}
-            disabled={busy}
-            onChange={(e) => selectTenant(e.target.value)}
-          >
-            <option value="" disabled>
-              Select workspace
-            </option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-                {o.status === "active" ? "" : ` (${o.status})`}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <nav aria-label="Workspace">
-          {tabs.map((item, i) => (
-            <button
-              key={item}
-              className={tab === item ? "selected" : ""}
-              aria-current={tab === item ? "page" : undefined}
-              onClick={() => setTab(item)}
-            >
-              <span aria-hidden="true">
-                {["◫", "✦", "⇅", "◇", "☑", "◎", "◷"][i]}
-              </span>
-              {item}
-            </button>
-          ))}
-        </nav>
-        <div className="saas-sidebar-footer">
-          <div className="whoami" aria-label="Signed in as">
-            <span className="whoami-avatar" aria-hidden="true">{initialOf(email)}</span>
-            <span className="whoami-text">
-              <strong title={email}>{email || "Signed in"}</strong>
-              <small>{roleLabel(workspace?.me) || (closed ? closed.status : "")}</small>
-              <small className="whoami-org">{workspace?.organization.name ?? closed?.name ?? ""}</small>
-            </span>
-          </div>
-          <a href="/change-password">Account security</a>
-          <button
-            onClick={() =>
-              void signOut().then(() => window.location.assign("/login"))
-            }
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
-      <div className="saas-main">
-        <header className="saas-topbar">
-          <span>
-            {workspace?.organization.name ?? "Your organization"}{" "}
-            <span className="muted"> / {tab}</span>
-          </span>
-          <span className="saas-badge">
-            {workspace?.organization.owner
-              ? "Organization owner"
-              : "Member workspace"}
-          </span>
-        </header>
-        <main>
-          <div className="saas-page-heading">
-            <div>
-              <p className="eyebrow">MEASURE · UNDERSTAND · ACT</p>
-              <h1>{tab}</h1>
-              <p className="muted">
-                {description(tab)}
-                {tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
-              </p>
-            </div>
-            <button
-              className="secondary"
-              onClick={() => setTab("Data & approvals")}
-            >
-              ＋ Submit data
-            </button>
-          </div>
-          {message && <output className="saas-message">{message}</output>}
-          {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
-          {!loading && !tenant && (
-            <Empty>
-              <h2>Your workspace starts with an invitation</h2>
-              <p>
-                Ask your organization owner for an invitation. Platform
-                operators can provision an empty organization.
-              </p>
-              <a href="/operator">Open platform setup</a>
-            </Empty>
-          )}
-          {closed && (
-            <Empty>
-              <div className="status-panel">
-                <p className="eyebrow">{closed.name.toUpperCase()}</p>
-                <h2>
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex overflow-x-hidden relative">
+      {/* Persistent / Responsive Left Sidebar */}
+      <Sidebar
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        isMobileMenuOpen={isMobileMenuOpen}
+        closeMobileMenu={() => setIsMobileMenuOpen(false)}
+        activeTab={tab}
+        onSelectTab={setTab}
+        workspace={workspace}
+        email={email}
+        onSignOut={() => void signOut().then(() => window.location.assign("/login"))}
+      />
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
+        {/* Sticky Header */}
+        <Header
+          sidebarCollapsed={sidebarCollapsed}
+          toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          activeTab={tab}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          organizations={organizations}
+          tenant={tenant}
+          selectTenant={selectTenant}
+          workspace={workspace}
+          openAskAi={() => setIsAskAiOpen(true)}
+          onSelectTab={setTab}
+          email={email}
+        />
+
+        {/* Sticky Context Bar */}
+        <ContextBar
+          sidebarCollapsed={sidebarCollapsed}
+          workspace={workspace}
+          selectedUnitId={selectedUnitId}
+          onSelectUnitId={setSelectedUnitId}
+          selectedDomain={selectedDomain}
+          onSelectDomain={setSelectedDomain}
+          selectedPeriodType={selectedPeriodType}
+          onSelectPeriodType={setSelectedPeriodType}
+        />
+
+        {/* Page Body */}
+        <main
+          className={`flex-1 px-3.5 py-4 sm:px-6 sm:py-6 lg:px-8 transition-all duration-300 ml-0 ${
+            sidebarCollapsed ? "lg:ml-20" : "lg:ml-64"
+          }`}
+        >
+          <div className="max-w-7xl mx-auto space-y-6">
+            {message && (
+              <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold flex items-center justify-between">
+                <span>{message}</span>
+                <button onClick={() => setMessage("")} className="text-blue-500 hover:text-blue-700 font-bold ml-2">×</button>
+              </div>
+            )}
+
+            {loading && !closed && (
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-sm font-semibold text-slate-500">
+                Loading your authorized workspace…
+              </div>
+            )}
+
+            {!loading && !tenant && (
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
+                <h2 className="text-lg font-black text-slate-900">Your workspace starts with an invitation</h2>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Ask your organization owner for an invitation. Platform operators can provision an empty organization.
+                </p>
+                <a href="/operator" className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-xs">
+                  Open platform setup
+                </a>
+              </div>
+            )}
+
+            {closed && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{closed.name}</p>
+                <h2 className="text-lg font-black text-slate-900">
                   {closed.status === "pending"
                     ? "Your organization is waiting to be activated"
                     : closed.status === "suspended"
                       ? "Your organization is suspended"
                       : "This organization has been removed"}
                 </h2>
-                <p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
                   {closed.status === "pending"
-                    ? "Your service provider is setting it up. You will be able to sign in and work as soon as they activate it."
+                    ? "Your service provider is setting it up. You will be able to sign in as soon as it is active."
                     : closed.status === "suspended"
-                      ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
-                      : "It is no longer available. Contact your service provider if you think this is a mistake."}
+                      ? "Access has been paused. Nothing has been lost. Contact your service provider to restore access."
+                      : "It is no longer available. Contact your administrator if you think this is a mistake."}
                 </p>
-                <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  onClick={() => void signOut().then(() => window.location.assign("/login"))}
+                >
                   Sign out
                 </button>
               </div>
-            </Empty>
-          )}
-          {workspace && !closed && (
-            <fieldset disabled={busy} className="saas-content" key={tenant}>
-              {tab === "Dashboard" && (
-                <Dashboard
-                  workspace={workspace}
-                  change={change}
-                  ask={(q) => {
-                    setAskSeed(q);
-                    setTab("Ask");
-                  }}
-                  goto={setTab}
-                />
-              )}
-              {tab === "Ask" && (
-                <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
-              )}
-              {tab === "KPI library" && (
-                <Kpis workspace={workspace} change={change} />
-              )}
-              {tab === "Data & approvals" && (
-                <>
-                  <CsvImport workspace={workspace} reload={reload} />
-                  <DataEntry
+            )}
+
+            {workspace && !closed && (
+              <fieldset disabled={busy} className="space-y-6 border-0 p-0 m-0" key={tenant}>
+                {tab === "Dashboard" && (
+                  <Dashboard
                     workspace={workspace}
                     change={change}
-                    tenant={tenant}
-                  />
-                </>
-              )}
-              {tab === "Organization" &&
-                (workspace.organization.owner ? (
-                  <OrgHub
-                    workspace={workspace}
-                    change={change}
+                    ask={(q) => {
+                      setAskSeed(q);
+                      setIsAskAiOpen(true);
+                    }}
                     goto={setTab}
-                    tenant={tenant}
-                    reload={reload}
-                    governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                    selectedUnitId={selectedUnitId}
+                    selectedDomain={selectedDomain}
                   />
-                ) : (
-                  <Organization workspace={workspace} change={change} />
-                ))}
-              {tab === "Actions" && (
-                <Actions workspace={workspace} change={change} />
-              )}
-              {tab === "Activity" && <Activity tenant={tenant} />}
-            </fieldset>
-          )}
-          <footer className="saas-footer">
-            Values appear only after approved inputs are calculated. Missing
-            data is never treated as zero.
-          </footer>
+                )}
+                {tab === "KPI Dashboard" && (
+                  <KpiDashboardView
+                    workspace={workspace}
+                    onAskKpi={(k) => {
+                      setAskSeed(`Tell me about ${k}`);
+                      setIsAskAiOpen(true);
+                    }}
+                  />
+                )}
+                {tab === "Actions" && (
+                  <ActionCenterView
+                    workspace={workspace}
+                    change={change}
+                  />
+                )}
+                {tab === "Units" && (
+                  <UnitsView
+                    workspace={workspace}
+                    change={change}
+                    onSelectUnit={(uId) => {
+                      setSelectedUnitId(uId);
+                      setTab("Dashboard");
+                    }}
+                  />
+                )}
+                {tab === "Ask" && (
+                  <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
+                )}
+                {tab === "KPI library" && (
+                  <Kpis workspace={workspace} change={change} />
+                )}
+                {tab === "Data & approvals" && (
+                  <div className="space-y-6">
+                    <CsvImport workspace={workspace} reload={reload} />
+                    <DataEntry
+                      workspace={workspace}
+                      change={change}
+                      tenant={tenant}
+                    />
+                  </div>
+                )}
+                {tab === "Organization" &&
+                  (workspace.organization.owner ? (
+                    <OrgHub
+                      workspace={workspace}
+                      change={change}
+                      goto={setTab}
+                      tenant={tenant}
+                      reload={reload}
+                      governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                    />
+                  ) : (
+                    <Organization workspace={workspace} change={change} />
+                  ))}
+                {tab === "Activity" && <Activity tenant={tenant} />}
+              </fieldset>
+            )}
+          </div>
         </main>
       </div>
+
+      {/* Global Modals & Toasts */}
+      <AskAnythingModal
+        isOpen={isAskAiOpen}
+        onClose={() => {
+          setIsAskAiOpen(false);
+          setAskSeed("");
+        }}
+        tenant={tenant}
+        initialQuestion={askSeed}
+      />
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }
-function description(tab: Tab) {
-  return {
-    Dashboard: "Your morning brief: what changed, what is off target, and what to act on.",
-    Ask: "Ask in plain words. Answers use only what your role can see.",
-    "Data & approvals":
-      "Submit aggregate measures and review them before publication.",
-    "KPI library":
-      "Define what matters. Keep every calculation explicit and versioned.",
-    Actions: "Turn an observation into an accountable next step.",
-    Organization: "Run your organization: its details, roles and the KPIs each one sees, people and units.",
-    Activity: "An auditable record of changes in your workspace.",
-  }[tab];
-}
+
 type Props = {
   workspace: SaasWorkspace;
   change: (path: string, body: unknown) => Promise<boolean>;
@@ -924,95 +955,7 @@ function Organization({ workspace: w, change }: Props) {
     </>
   );
 }
-function Actions({ workspace: w, change }: Props) {
-  const [evidence,setEvidence]=useState<SaasResult>();const [evidenceError,setEvidenceError]=useState('');
-  return (
-    <>
-      <section className="saas-card">
-        <h2>Assign an action</h2>
-        <p>
-          Each action preserves the exact result it was created from, even after
-          later corrections.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void change("/actions", {
-              title: text(f, "title"),
-              resultId: text(f, "resultId"),
-              assigneeId: text(f, "assigneeId"),
-              dueDate: text(f, "dueDate"),
-            });
-          }}
-        >
-          <Field title="Next step">
-            <input name="title" required maxLength={200} />
-          </Field>
-          <div className="saas-form-grid">
-            <Field title="Evidence">
-              <select name="resultId" required>
-                {w.results.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {w.kpis.find((k) => k.id === r.kpiId)?.name} ·{" "}
-                    {w.units.find((u) => u.id === r.unitId)?.name} · {r.end}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field title="Assignee">
-              <select name="assigneeId" required>
-                {w.members
-                  .filter((m) => m.active)
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.subject === w.subject ? "You" : m.displayName}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <Field title="Due date">
-              <input name="dueDate" type="date" required />
-            </Field>
-          </div>
-          <button disabled={!w.results.length}>Create action</button>
-        </form>
-      </section>
-      {evidence&&<section className="saas-card"><h2>Original action evidence</h2><p>{evidence.start} — {evidence.end} · {evidence.origin.join(', ')}</p><p className="saas-value">{evidence.value.status==='available'?evidence.value.value:evidence.value.status}</p><p>Target at publication: {evidence.target??'Not configured'}</p><details><summary>Trace records</summary><p>{evidence.inputIds.join(', ')}</p><p>Calculated: {evidence.computedAt}</p></details><button className="secondary" onClick={()=>setEvidence(undefined)}>Close evidence</button></section>}
-      {evidenceError&&<p role="alert">{evidenceError}</p>}
-      <section className="saas-card">
-        <h2>Action register</h2>
-        {!w.actions.length ? (
-          <Empty>No actions yet. Start from an approved result.</Empty>
-        ) : (
-          w.actions.map((a) => (
-            <div className="saas-observation" key={a.id}>
-              <h3>{a.title}</h3><button className="secondary" onClick={()=>{setEvidenceError('');void request(`/api/saas/${w.organization.id}/results/${a.resultId}`,ResultSchema).then(setEvidence).catch(e=>setEvidenceError(e.message));}}>View original evidence</button>
-              <p>
-                Due {a.dueDate} · Evidence {a.resultId}
-              </p>
-              <Field title="Status">
-                <select
-                  value={a.state}
-                  onChange={(e) =>
-                    void change(`/actions/${a.id}/transition`, {
-                      state: e.target.value,
-                      expectedVersion: a.version,
-                    })
-                  }
-                >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="done">Done</option>
-                </select>
-              </Field>
-            </div>
-          ))
-        )}
-      </section>
-    </>
-  );
-}
+
 function Activity({ tenant }: { tenant: string }) {
   const [rows, setRows] = useState<
     ReturnType<typeof AuditResponseSchema.parse>

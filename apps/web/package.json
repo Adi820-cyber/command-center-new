@@ -21,9 +21,12 @@
     "@orbit/contracts": "^0.0.0",
     "@orbit/ui-kit": "^0.0.0",
     "@supabase/supabase-js": "^2.117.0",
+    "@tailwindcss/vite": "4.3.3",
+    "lucide-react": "1.61.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-router": "^7.18.4"
+    "react-router": "^7.18.4",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

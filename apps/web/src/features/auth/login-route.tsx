@@ -8,7 +8,6 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
-import { OrbitBrand } from "@orbit/ui-kit";
 import {
   AuthConfigurationError,
   getCurrentSession,
@@ -166,41 +165,18 @@ export async function loginAction({ request }: ActionFunctionArgs) {
  */
 async function landingPath(): Promise<string> { return "/"; }
 
-function MailIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M4 6.5h16v11H4z" />
-      <path d="m5 8 7 5 7-5" />
-    </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <rect height="10" rx="2" width="14" x="5" y="10" />
-      <path d="M8 10V7.5a4 4 0 0 1 8 0V10" />
-    </svg>
-  );
-}
-
-function EyeIcon({ hidden }: { hidden: boolean }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" />
-      <circle cx="12" cy="12" r="2.5" />
-      {hidden ? <path d="m4 4 16 16" /> : null}
-    </svg>
-  );
-}
-
-function ArrowIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M5 12h14M14 7l5 5-5 5" />
-    </svg>
-  );
-}
+import {
+  Building2,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  Shield,
+  ArrowRight,
+  AlertCircle,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
 
 export function LoginRoute() {
   const actionData = useActionData<LoginActionData>();
@@ -209,138 +185,264 @@ export function LoginRoute() {
   const isSubmitting = navigation.state === "submitting";
 
   return (
-    <main className="login-page">
-      <section aria-labelledby="orbit-login-promise" className="login-story">
-        <div className="login-story__glow login-story__glow--one" />
-        <div className="login-story__glow login-story__glow--two" />
+    <div className="min-h-screen flex bg-slate-900" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+      {/* ─── Left Panel — Executive Command Center Branding ─── */}
+      <div
+        className="hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f2744 100%)",
+        }}
+      >
+        {/* Subtle grid pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: `linear-gradient(rgba(148,163,184,1) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,1) 1px, transparent 1px)`,
+            backgroundSize: "48px 48px",
+          }}
+        />
 
-        <OrbitBrand tagline="Healthcare performance platform" />
+        {/* Glowing radial gradient orbs */}
+        <div
+          className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-20 pointer-events-none"
+          style={{ background: "radial-gradient(circle, #3b82f6 0%, transparent 70%)" }}
+        />
+        <div
+          className="absolute bottom-0 right-0 w-80 h-80 rounded-full opacity-15 pointer-events-none"
+          style={{ background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)" }}
+        />
 
-        <div className="login-story__content">
-          <p className="login-eyebrow">People · Performance · Better decisions</p>
-          <h1 id="orbit-login-promise">
-            Better performance.
-            <span>Brighter care.</span>
-          </h1>
-          <p className="login-story__intro">
-            Turn authorized healthcare evidence into focused decisions and accountable action.
-          </p>
+        {/* Branding Content */}
+        <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
+          {/* Logo Header */}
+          <div className="flex items-center gap-3 mb-auto">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20"
+              style={{ background: "linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)" }}
+            >
+              <Building2 size={20} className="text-white" />
+            </div>
+            <div>
+              <span className="text-white font-extrabold text-lg tracking-tight">Executive</span>
+              <span className="text-blue-400 text-sm font-semibold ml-1.5 uppercase tracking-wider">Command Center</span>
+            </div>
+          </div>
 
-          <ul className="login-benefits">
-            <li><span>01</span>See what changed</li>
-            <li><span>02</span>Understand the evidence</li>
-            <li><span>03</span>Record the next action</li>
-          </ul>
+          {/* Main Headline */}
+          <div className="my-auto max-w-lg">
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 border"
+              style={{
+                background: "rgba(59, 130, 246, 0.12)",
+                borderColor: "rgba(59, 130, 246, 0.25)",
+              }}
+            >
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              <span className="text-blue-300 text-xs font-bold tracking-wider uppercase">
+                Performance Telemetry & Decision Queue
+              </span>
+            </div>
+
+            <h1 className="text-4xl xl:text-5xl font-black text-white leading-tight mb-5 tracking-tight">
+              Decisions start with{" "}
+              <span
+                style={{
+                  background: "linear-gradient(90deg, #60a5fa, #38bdf8)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                clarity.
+              </span>
+            </h1>
+
+            <p className="text-slate-300 text-base xl:text-lg leading-relaxed mb-8">
+              Turn authorized operational evidence into focused executive decisions and accountable actions across your entire organization.
+            </p>
+
+            {/* Core Capability Badges */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { step: "01", label: "Triage Exceptions", desc: "Automated telemetry & morning brief" },
+                { step: "02", label: "Verify Evidence", desc: "Transparent calculation audits" },
+                { step: "03", label: "Authorise Actions", desc: "Executive sign-off & memos" },
+              ].map((item) => (
+                <div
+                  key={item.step}
+                  className="rounded-xl p-3.5 border"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    borderColor: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <span className="text-xs font-mono font-bold text-blue-400">{item.step}</span>
+                  <div className="text-sm font-bold text-white mt-1">{item.label}</div>
+                  <div className="text-slate-400 text-[11px] mt-0.5 leading-tight">{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footer security notice */}
+          <div className="flex items-center gap-2 mt-auto">
+            <Shield size={15} className="text-slate-400" />
+            <span className="text-slate-400 text-xs">
+              Enterprise operations workspace · End-to-end cryptographic audit trails
+            </span>
+          </div>
         </div>
+      </div>
 
-        <div aria-hidden="true" className="login-orbit-scene">
-          <span className="login-orbit-scene__ring login-orbit-scene__ring--outer" />
-          <span className="login-orbit-scene__ring login-orbit-scene__ring--middle" />
-          <span className="login-orbit-scene__ring login-orbit-scene__ring--inner" />
-          <span className="login-orbit-scene__core" />
-          <span className="login-orbit-scene__node login-orbit-scene__node--data">Data</span>
-          <span className="login-orbit-scene__node login-orbit-scene__node--evidence">Evidence</span>
-          <span className="login-orbit-scene__node login-orbit-scene__node--action">Action</span>
-        </div>
+      {/* ─── Right Panel — Executive Login Form ─── */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-white">
+        <div className="w-full max-w-md">
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md"
+              style={{ background: "linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)" }}
+            >
+              <Building2 size={20} className="text-white" />
+            </div>
+            <div>
+              <span className="text-slate-900 font-extrabold text-lg tracking-tight">Executive</span>
+              <span className="text-blue-600 text-sm font-semibold ml-1.5 uppercase">Command Center</span>
+            </div>
+          </div>
 
-        <p className="login-story__footnote">A clearer view of what needs attention.</p>
-      </section>
-
-      <section aria-labelledby="login-title" className="login-entry">
-        <div className="login-entry__mobile-brand">
-          <OrbitBrand compact />
-        </div>
-
-        <div className="login-card">
-          <header className="login-card__header">
-            <p className="login-eyebrow">Welcome to Command Center</p>
-            <h2 id="login-title">Sign in to your workspace</h2>
-            <p>Use the work account provisioned for your authorized role and scope.</p>
+          <header className="mb-8">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded">
+              Secure Sign In
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-3">
+              Sign in to your workspace
+            </h2>
+            <p className="text-sm text-slate-500 mt-1.5">
+              Enter the work account provisioned for your authorized role and scope.
+            </p>
           </header>
 
-          {actionData?.message ? (
-            <div className="login-alert" role="alert">
-              <span aria-hidden="true">!</span>
-              <p>{actionData.message}</p>
+          {/* Error Alert */}
+          {actionData?.message && (
+            <div
+              role="alert"
+              className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 animate-in fade-in"
+            >
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs font-medium leading-relaxed">{actionData.message}</div>
             </div>
-          ) : null}
+          )}
 
-          <Form className="login-form" method="post" noValidate>
-            <div className="login-field">
-              <label htmlFor="email">Work email</label>
-              <div className="login-control" data-invalid={Boolean(actionData?.errors?.email)}>
-                <span className="login-control__icon"><MailIcon /></span>
+          <Form method="post" noValidate className="space-y-4">
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+              >
+                Work Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Mail className="w-4 h-4" />
+                </div>
                 <input
-                  aria-describedby={actionData?.errors?.email ? "email-error" : undefined}
-                  aria-invalid={Boolean(actionData?.errors?.email)}
+                  id="email"
+                  name="email"
+                  type="text"
                   autoComplete="username"
                   defaultValue={actionData?.email}
-                  id="email"
-                  autoCapitalize="none"
-                  inputMode="email"
-                  name="email"
                   placeholder="name@organization.org"
                   required
                   spellCheck={false}
-                  type="text"
+                  autoCapitalize="none"
+                  inputMode="email"
+                  className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all focus:outline-none ${
+                    actionData?.errors?.email
+                      ? "border-rose-300 bg-rose-50/30 text-rose-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
+                      : "border-slate-300 bg-white text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  }`}
                 />
               </div>
-              {actionData?.errors?.email ? (
-                <p className="login-field__error" id="email-error">{actionData.errors.email}</p>
-              ) : null}
+              {actionData?.errors?.email && (
+                <p className="text-xs text-rose-600 font-semibold mt-1.5 ml-1">
+                  {actionData.errors.email}
+                </p>
+              )}
             </div>
 
-            <div className="login-field">
-              <label htmlFor="password">Password</label>
-              <div className="login-control" data-invalid={Boolean(actionData?.errors?.password)}>
-                <span className="login-control__icon"><LockIcon /></span>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="password"
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-700"
+                >
+                  Password
+                </label>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="w-4 h-4" />
+                </div>
                 <input
-                  aria-describedby={actionData?.errors?.password ? "password-error" : undefined}
-                  aria-invalid={Boolean(actionData?.errors?.password)}
-                  autoComplete="current-password"
                   id="password"
                   name="password"
-                  placeholder="Enter your password"
-                  required
                   type={passwordVisible ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••••••"
+                  required
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-sm font-medium transition-all focus:outline-none ${
+                    actionData?.errors?.password
+                      ? "border-rose-300 bg-rose-50/30 text-rose-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
+                      : "border-slate-300 bg-white text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  }`}
                 />
                 <button
-                  aria-label={passwordVisible ? "Hide password" : "Show password"}
-                  className="login-password-toggle"
-                  onClick={() => setPasswordVisible((visible) => !visible)}
                   type="button"
+                  onClick={() => setPasswordVisible((v) => !v)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label={passwordVisible ? "Hide password" : "Show password"}
                 >
-                  <EyeIcon hidden={passwordVisible} />
+                  {passwordVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {actionData?.errors?.password ? (
-                <p className="login-field__error" id="password-error">{actionData.errors.password}</p>
-              ) : null}
+              {actionData?.errors?.password && (
+                <p className="text-xs text-rose-600 font-semibold mt-1.5 ml-1">
+                  {actionData.errors.password}
+                </p>
+              )}
             </div>
 
-            <button className="login-submit" disabled={isSubmitting} type="submit">
-              <span>{isSubmitting ? "Signing in…" : "Sign in"}</span>
-              {isSubmitting ? <span aria-hidden="true" className="login-spinner" /> : <ArrowIcon />}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full mt-2 py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Signing in…</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </Form>
 
-          <div className="login-access-note">
-            <p><strong>Need access?</strong> Contact your administrator.</p>
-            <p>Accounts and role access are provisioned by your organization.</p>
-          </div>
-
-          <div className="login-demo-note">
-            <span className="chip-illustrative">Organization workspace</span>
-            <p>Your organization manages access, KPI definitions, and approval of its data.</p>
+          {/* Workspace info & governance footer */}
+          <div className="mt-8 pt-6 border-t border-slate-100 space-y-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Multi-tenant organization authorization enabled</span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Need access? Contact your workspace administrator to provision your authorized role and scope.
+            </p>
           </div>
         </div>
-
-        <footer className="login-entry__footer">
-          <span>Authorized users only</span>
-          <span aria-hidden="true">·</span>
-          <span>Command Center</span>
-        </footer>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
