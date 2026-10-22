@@ -1,33 +1,39 @@
 /* Version 2 screens: dashboard, Ask, CSV intake, catalog, operator console. */
 .saas-shell,
 .saas-console {
-  --ink: #172d33;
-  --muted: #627579;
-  --line: #dce5e3;
-  --accent: #126a58;
-  --good: #156343;
-  --good-bg: #e1f1e9;
-  --bad: #a1332b;
-  --bad-bg: #fbe8e5;
-  --soft: #f1f5f1;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #2563eb;
+  --good: #059669;
+  --good-bg: #ecfdf5;
+  --bad: #e11d48;
+  --bad-bg: #fff1f2;
+  --soft: #f8fafc;
 }
 
 /* ---- Dashboard ---------------------------------------------------------- */
 .dash-brief {
-  background: linear-gradient(135deg, #122f30, #1c4a46);
-  color: #edf7f0;
-  border-radius: 14px;
-  padding: 28px 30px;
-  margin-bottom: 22px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f2744 100%);
+  color: #f8fafc;
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
 }
 .dash-brief .eyebrow {
-  color: #a6c6bd;
+  color: #38bdf8;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1.5px;
 }
 .dash-brief h2 {
-  margin: 8px 0 14px;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.35;
+  margin: 10px 0 16px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 .dash-chips {
   display: flex;
@@ -35,16 +41,24 @@
   gap: 10px;
 }
 .dash-chip {
-  border-radius: 999px;
-  padding: 7px 14px;
+  border-radius: 9999px;
+  padding: 6px 14px;
   font-size: 12px;
-  background: rgb(255 255 255 / 12%);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .dash-chip.good {
-  background: rgb(120 220 160 / 22%);
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 .dash-chip.bad {
-  background: rgb(255 140 120 / 25%);
+  background: rgba(244, 63, 94, 0.18);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.35);
 }
 .dash-toolbar {
   display: flex;
@@ -52,10 +66,12 @@
   gap: 14px;
   align-items: end;
   justify-content: space-between;
-  margin: 8px 0 18px;
+  margin: 10px 0 20px;
 }
 .dash-toolbar label {
   max-width: 280px;
+  font-weight: 600;
+  color: #334155;
 }
 .dash-asks {
   display: flex;
@@ -64,12 +80,20 @@
 }
 .dash-asks button,
 .ask-suggestions button {
-  background: #fff;
-  color: var(--accent);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 13px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 9999px;
+  padding: 6px 14px;
   font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dash-asks button:hover,
+.ask-suggestions button:hover {
+  background: #dbeafe;
+  color: #1e40af;
 }
 .dash-two {
   display: grid;
@@ -86,9 +110,14 @@
 .dash-list li {
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  background: #fff;
+  transition: border-color 0.15s ease;
+}
+.dash-list li:hover {
+  border-color: #cbd5e1;
 }
 .dash-list .top {
   display: flex;
@@ -97,51 +126,63 @@
   align-items: baseline;
 }
 .dash-list strong {
-  font-weight: 600;
+  font-weight: 700;
+  color: #0f172a;
 }
 .dash-domain {
-  margin: 34px 0 14px;
+  margin: 36px 0 16px;
   display: flex;
   align-items: baseline;
   gap: 12px;
 }
 .dash-domain h2 {
   font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0;
 }
 .dash-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
 }
 .kpi-tile {
   background: #fff;
   border: 1px solid var(--line);
   border-top-width: 4px;
-  border-radius: 12px;
-  padding: 18px 20px;
+  border-radius: 14px;
+  padding: 20px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   align-content: start;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.kpi-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07);
+  border-color: #cbd5e1;
 }
 .kpi-tile.good {
-  border-top-color: #3f9e72;
+  border-top-color: #10b981;
 }
 .kpi-tile.bad {
-  border-top-color: #cf5a4d;
+  border-top-color: #f43f5e;
 }
 .kpi-tile.neutral {
-  border-top-color: #c3cfcb;
+  border-top-color: #94a3b8;
 }
 .kpi-tile h3 {
   margin: 0;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: #475569;
 }
 .kpi-value {
   font-size: 28px;
-  font-weight: 560;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #0f172a;
   letter-spacing: -0.5px;
   overflow-wrap: anywhere;
 }
@@ -159,9 +200,11 @@
 }
 .kpi-change.good {
   color: var(--good);
+  font-weight: 600;
 }
 .kpi-change.bad {
   color: var(--bad);
+  font-weight: 600;
 }
 .kpi-change.neutral {
   color: var(--muted);
@@ -173,24 +216,24 @@
 }
 .spark polyline {
   fill: none;
-  stroke-width: 2;
+  stroke-width: 2.2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 .spark.good polyline,
 .spark.good circle {
-  stroke: #3f9e72;
-  fill: #3f9e72;
+  stroke: #10b981;
+  fill: #10b981;
 }
 .spark.bad polyline,
 .spark.bad circle {
-  stroke: #cf5a4d;
-  fill: #cf5a4d;
+  stroke: #f43f5e;
+  fill: #f43f5e;
 }
 .spark.neutral polyline,
 .spark.neutral circle {
-  stroke: #8a9b97;
-  fill: #8a9b97;
+  stroke: #94a3b8;
+  fill: #94a3b8;
 }
 .spark polyline {
   fill: none !important;
@@ -203,9 +246,10 @@
   display: grid;
   gap: 10px;
   margin-top: 6px;
-  padding: 12px;
+  padding: 14px;
   background: var(--soft);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 /* ---- Ask ---------------------------------------------------------------- */
