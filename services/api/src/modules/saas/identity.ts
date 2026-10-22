@@ -42,7 +42,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     // 2. Create the logins, then the memberships in one step. If that step fails the
     //    logins just created are removed, so nothing is left behind.
     const prepared = await prepareLogins(
-      body.members.map((m) => ({ email: m.email, roleKeys: [], roleIds: m.roleIds, password: m.password })),
+      body.members.map((m) => ({ displayName: m.displayName, email: m.email, roleKeys: [], roleIds: m.roleIds, password: m.password })),
       options.authAdmin,
     );
     try {
@@ -138,6 +138,14 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     );
     if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
     await options.authAdmin.setOwnPassword(me.sub, body.password);
+    await inSubject(
+      options.identityDatabase,
+      me.sub,
+      async (tx) => {
+        await tx.query("select kpi.mark_owner_credentials_verified()");
+      },
+      "kpi_identity_app",
+    );
     return { ok: true };
   });
 }

@@ -67,7 +67,12 @@ export const ProvisionMemberSchema = z.strictObject({
 });
 export const ProvisionRequestSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),
+  industry: z.string().trim().min(1).max(120).default("Other"),
+  plan: z.string().trim().min(1).max(80).default("Pilot"),
+  ownerName: z.string().trim().min(1).max(120).default("Organization owner"),
   ownerEmail: z.email(),
+  /** Commercial state only. It never grants access to customer data. */
+  subscriptionStatus: z.enum(["trial", "active", "past_due", "cancelled"]).default("trial"),
   /** A template id, or leave out for an empty organisation. */
   templateId: z.string().min(1).max(80).optional(),
   members: z.array(ProvisionMemberSchema).max(500).default([]),
@@ -167,6 +172,7 @@ export const AddLoginsRequestSchema = z.strictObject({
   members: z
     .array(
       z.strictObject({
+        displayName: z.string().trim().min(1).max(120).optional(),
         email: z.email(),
         roleIds: z.array(z.uuid()).min(1).max(10),
         password: z.string().min(8, "Password must have at least 8 characters.").max(72).optional(),

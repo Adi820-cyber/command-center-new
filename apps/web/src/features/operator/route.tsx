@@ -10,6 +10,7 @@ import {
 import { getCurrentSession, signOut } from "../../lib/auth";
 import { mutate, request } from "../saas/client";
 import { AccessPanel, type IssuedSet } from "../saas/access-panel";
+import { AskPanel } from "../saas/ask-panel";
 import "../saas/saas.css";
 import "../saas/v2.css";
 
@@ -32,6 +33,7 @@ export function OperatorConsoleRoute() {
   const [organizations, setOrganizations] = useState<Organizations>([]);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [issued, setIssued] = useState<IssuedSet>();
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [confirming, setConfirming] = useState<{ id: string; kind: "delete" | "erase"; typed: string }>();
 
   useEffect(() => {
@@ -88,7 +90,11 @@ export function OperatorConsoleRoute() {
     try {
       const result = await request("/api/control/organizations", ProvisionResponseSchema, {
         name: field("name"),
+        industry: field("industry"),
+        plan: field("plan"),
+        ownerName: field("ownerName"),
         ownerEmail: field("email"),
+        subscriptionStatus: "trial",
         ownerEmailVerified: true,
         activate: data.get("activate") === "on",
         members: [],
@@ -243,6 +249,18 @@ export function OperatorConsoleRoute() {
               <input name="name" required maxLength={120} placeholder="e.g. Acme Corporation" />
             </label>
             <label>
+              Industry
+              <input name="industry" required maxLength={120} placeholder="e.g. Professional services" />
+            </label>
+            <label>
+              Plan
+              <input name="plan" required maxLength={80} defaultValue="Pilot" placeholder="e.g. Pilot" />
+            </label>
+            <label>
+              Owner name
+              <input name="ownerName" required maxLength={120} placeholder="e.g. Asha Sharma" />
+            </label>
+            <label>
               Owner’s sign-in email
               <input name="email" type="email" required placeholder="owner@acme.com" />
             </label>
@@ -280,8 +298,9 @@ export function OperatorConsoleRoute() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Status</th>
+                <th>Plan & status</th>
                 <th>Owner</th>
+                <th>Access</th>
                 <th>Template</th>
                 <th><span className="sr-only">Actions</span></th>
               </tr>
@@ -292,9 +311,12 @@ export function OperatorConsoleRoute() {
                 return (
                   <tr key={o.id}>
                     <td>
-                      {o.name}
+                      <strong>{o.name}</strong>
+                      <small className="muted" style={{ display: "block" }}>{o.industry}</small>
                     </td>
                     <td>
+                      <strong>{o.plan}</strong>
+                      <small className="muted" style={{ display: "block" }}>{o.subscriptionStatus.replace("_", " ")}</small>
                       <span className={`saas-badge ${o.status === "active" ? "good" : o.status === "pending" ? "" : "bad"}`}>{o.status}</span>
                       {o.status === "deleted" && o.purgeAfter && (
                         <small className="muted" style={{ display: "block", marginTop: 4 }}>
@@ -303,12 +325,21 @@ export function OperatorConsoleRoute() {
                       )}
                     </td>
                     <td>
-                      {o.ownerEmail ?? "—"}
+                      <strong>{o.ownerName ?? "Organization owner"}</strong>
+                      <small className="muted" style={{ display: "block" }}>{o.ownerEmail ?? "—"}</small>
                       {o.ownerEmailVerifiedAt && (
                         <small className="muted" style={{ display: "block" }}>
                           email verified {new Date(o.ownerEmailVerifiedAt).toLocaleDateString()}
                         </small>
                       )}
+                    </td>
+                    <td>
+                      <span className={`saas-badge ${o.credentialStatus === "verified" ? "good" : ""}`}>
+                        {o.credentialStatus === "verified" ? "Password verified" : "Reset pending"}
+                      </span>
+                      <small className="muted" style={{ display: "block", marginTop: 4 }}>
+                        {o.userCount} user{o.userCount === 1 ? "" : "s"} · {o.roleCount} role{o.roleCount === 1 ? "" : "s"}
+                      </small>
                     </td>
                     <td>{t?.name ?? (o.templateId ? o.templateId : <span className="muted">Owner still choosing</span>)}</td>
                     <td>
@@ -473,6 +504,31 @@ export function OperatorConsoleRoute() {
           </form>
         </details>
       </section>
+      <button
+        type="button"
+        className="assistant-launcher"
+        aria-expanded={assistantOpen}
+        aria-controls="operator-assistant"
+        onClick={() => setAssistantOpen((open) => !open)}
+      >
+        {assistantOpen ? "Close assistant" : "Ask platform AI"}
+      </button>
+      {assistantOpen && (
+        <aside id="operator-assistant" className="assistant-drawer" aria-label="Platform metadata assistant">
+          <AskPanel
+            endpoint="/api/control/ask"
+            compact
+            title="Platform assistant"
+            note="This assistant sees onboarding, plans, owner credential status, and headcounts only. It cannot access customer KPI data."
+            starters={[
+              "Give me a platform summary",
+              "Which owners still need to reset their password?",
+              "Summarize subscription plans",
+              "What data can the operator see?",
+            ]}
+          />
+        </aside>
+      )}
     </main>
   );
 }

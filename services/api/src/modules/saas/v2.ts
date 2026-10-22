@@ -20,6 +20,7 @@ import { answerQuestion } from "./ask.ts";
 import { activateDraft, hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
 import { assertDistinct, prepareLogins } from "./logins.ts";
 import { loadWorkspace } from "./workspace.ts";
+import { answerOperatorQuestion, loadControlOrganizations } from "./operator-ask.ts";
 
 const CATALOG_ID = z.string().regex(/^[A-Z]{2,4}-\d{3}$/);
 const newToken = () => randomBytes(32).toString("hex");
@@ -137,6 +138,13 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
 
   app.get("/api/control/templates", async (req) => control(req, listTemplates));
 
+  // The operator assistant receives only the control-plane organization list.
+  // It cannot query a workspace or any customer KPI table.
+  app.post("/api/control/ask", async (req) => {
+    const { question } = input(WorkspaceAskRequestSchema, req.body);
+    return control(req, async (tx) => answerOperatorQuestion(question, await loadControlOrganizations(tx)));
+  });
+
   // Creates an organisation: its owner, and optionally a template with members and roles.
   //
   // With the Supabase secret key configured (control API), every person gets a
@@ -152,7 +160,7 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
     if (options.authAdmin) {
       await requireOperator(req);
       const prepared = await prepareLogins(
-        [{ email: body.ownerEmail, roleKeys: [], owner: true }, ...body.members],
+        [{ displayName: body.ownerName, email: body.ownerEmail, roleKeys: [], owner: true }, ...body.members],
         options.authAdmin,
       );
       try {
@@ -163,6 +171,13 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
             prepared.json,
           ]);
           await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
+          await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
+            uuid.parse(row?.id),
+            body.industry,
+            body.plan,
+            body.ownerName,
+            body.subscriptionStatus,
+          ]);
           return row?.id;
         });
         return ProvisionResponseSchema.parse({
@@ -190,6 +205,13 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
           ])
         : await tx.query("select kpi_control.provision($1,$2,$3) as id", [body.name, body.ownerEmail, hash(ownerToken)]);
       await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
+      await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
+        uuid.parse(row?.id),
+        body.industry,
+        body.plan,
+        body.ownerName,
+        body.subscriptionStatus,
+      ]);
       return ProvisionResponseSchema.parse({
         id: row?.id,
         mode: "invitations",

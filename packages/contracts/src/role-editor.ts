@@ -7,8 +7,8 @@ import { CapabilitySchema, type Capability } from "./saas.ts";
  *
  * The owner picks: a name, what the role may do, which part of the organization
  * (a unit and everything beneath it, or all of it), and which KPIs it can see
- * and act on (or all of them). The database stores that as one row per
- * capability, and one per KPI for view and act.
+ * and update (or all of them). The database stores that as one row per
+ * capability, and one per KPI for view, act and submit.
  */
 export const SaveRoleRequestSchema = z.strictObject({
   /** Leave out to create a new role. */
@@ -17,7 +17,7 @@ export const SaveRoleRequestSchema = z.strictObject({
   capabilities: z.array(CapabilitySchema).max(5),
   /** The unit the role works in, with everything beneath it. Null is the whole organization. */
   scopeUnitId: z.uuid().nullable(),
-  /** KPIs for view and act. Empty means every KPI in scope. */
+  /** KPIs for view, act and submit. Empty means every KPI in scope. */
   kpiIds: z.array(z.uuid()).max(1000),
 });
 export type SaveRoleRequest = z.infer<typeof SaveRoleRequestSchema>;
@@ -47,11 +47,12 @@ export function expandRoleGrants(request: Pick<SaveRoleRequest, "capabilities" |
     if (capability === "configure") {
       // Defining units and KPIs is organization-wide, never limited to a unit or a KPI.
       add({ capability, unitId: null, kpiId: null });
-    } else if (capability === "view" || capability === "act") {
+    } else if (capability === "view" || capability === "act" || capability === "submit") {
       if (kpiIds.length === 0) add({ capability, unitId: request.scopeUnitId, kpiId: null });
       else for (const kpiId of kpiIds) add({ capability, unitId: request.scopeUnitId, kpiId });
     } else {
-      // Entering and approving data apply to whole units, never to one KPI.
+      // Approval applies to a whole unit. Submission is handled above because
+      // a contributor must only update inputs used by their assigned KPIs.
       add({ capability, unitId: request.scopeUnitId, kpiId: null });
     }
   }
@@ -85,7 +86,7 @@ export function roleDraftFromGrants(grants: readonly RoleGrant[]): RoleDraft {
   if (scopes.size > 1) custom = true;
   const scopeUnitId = scopes.size === 1 ? ([...scopes][0] ?? null) : null;
 
-  const profile = (capability: "view" | "act") => {
+  const profile = (capability: "view" | "act" | "submit") => {
     const rows = grants.filter((g) => g.capability === capability);
     if (rows.length === 0) return undefined;
     const all = rows.some((g) => g.kpiId === null);
@@ -94,23 +95,25 @@ export function roleDraftFromGrants(grants: readonly RoleGrant[]): RoleDraft {
     if (all && ids.length > 0) custom = true;
     return { all, ids: new Set(ids) };
   };
-  const view = profile("view");
-  const act = profile("act");
+  const profiles = (["view", "act", "submit"] as const)
+    .map((capability) => ({ capability, profile: profile(capability) }))
+    .filter((entry): entry is { capability: "view" | "act" | "submit"; profile: { all: boolean; ids: Set<string> } } => Boolean(entry.profile));
   let allKpis = true;
   let kpiIds: string[] = [];
-  if (view && act) {
-    const same = view.all === act.all && view.ids.size === act.ids.size && [...view.ids].every((id) => act.ids.has(id));
-    // "Act on every KPI" next to "see only these" is what templates create. It means
-    // the same as acting on just those KPIs, because an action needs a result the
-    // person can see. Any other difference is a real one the controls cannot show.
-    const templateShape = act.all && act.ids.size === 0 && !view.all;
-    if (!same && !templateShape) custom = true;
-    allKpis = view.all;
-    kpiIds = [...view.ids];
-  } else if (view || act) {
-    const one = (view ?? act)!;
-    allKpis = one.all;
-    kpiIds = [...one.ids];
+  if (profiles.length > 0) {
+    // Prefer a restricted profile as the editor's single KPI selection. Older
+    // templates sometimes stored `act` as all-KPIs beside restricted `view`;
+    // that legacy shape is equivalent because acting requires visibility.
+    const baseline = profiles.find((entry) => !entry.profile.all) ?? profiles[0]!;
+    allKpis = baseline.profile.all;
+    kpiIds = [...baseline.profile.ids];
+    for (const entry of profiles) {
+      const same = entry.profile.all === baseline.profile.all
+        && entry.profile.ids.size === baseline.profile.ids.size
+        && [...entry.profile.ids].every((id) => baseline.profile.ids.has(id));
+      const legacyActAll = entry.capability === "act" && entry.profile.all && entry.profile.ids.size === 0 && !baseline.profile.all;
+      if (!same && !legacyActAll) custom = true;
+    }
   }
   return { capabilities, scopeUnitId, allKpis, kpiIds: allKpis ? [] : kpiIds, custom };
 }

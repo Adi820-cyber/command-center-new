@@ -157,6 +157,8 @@ export const WorkspaceSchema = z.strictObject({
     .default({ owner: false, roles: [] }),
   units: z.array(NewUnitSchema.extend({ id: z.uuid() })),
   measures: z.array(MeasureSchema),
+  /** Measure keys this caller may submit for at least one authorized unit/KPI tuple. */
+  submissionMeasureKeys: z.array(MeasureKeySchema).optional(),
   kpis: z.array(KpiDefinitionSchema),
   roles: z.array(
     NewRoleSchema.extend({ id: z.uuid(), templateKey: z.string().nullable() }),
@@ -263,6 +265,9 @@ export const ControlOrganizationListSchema = z.array(
   z.strictObject({
     id: z.uuid(),
     name: z.string(),
+    industry: z.string(),
+    plan: z.string(),
+    subscriptionStatus: z.enum(["trial", "active", "past_due", "cancelled"]),
     /** The template the organisation was created from, if any. */
     templateId: z.string().nullable(),
     status: OrganizationStatusSchema,
@@ -270,8 +275,13 @@ export const ControlOrganizationListSchema = z.array(
     /** For a deleted organization: when it may be permanently deleted. */
     purgeAfter: z.string().nullable(),
     ownerEmail: z.string().nullable(),
+    ownerName: z.string().nullable(),
     /** When the operator stated that the owner's email was verified. */
     ownerEmailVerifiedAt: z.string().nullable(),
+    /** Whether the owner has replaced the temporary credential using an emailed code. */
+    credentialStatus: z.enum(["pending_reset", "verified"]),
+    userCount: z.number().int().nonnegative(),
+    roleCount: z.number().int().nonnegative(),
   }),
 );
 export const SettingsSchema = z.strictObject({

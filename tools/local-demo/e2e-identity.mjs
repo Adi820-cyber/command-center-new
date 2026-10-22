@@ -40,7 +40,7 @@ ok((await raw(IDN, owner, "GET", `${T}/workspace`)).status === 404, "the identit
 ok((await raw(IDN, op, "GET", "/api/control/organizations")).status === 404, "and no operator routes");
 
 // 2. an owner creates logins with roles
-const people = [{ email: mail("coo"), roleIds: [roleId("operations")] }, { email: mail("two"), roleIds: [roleId("executive"), roleId("quality_head")] }];
+const people = [{ displayName: "Operations Lead", email: mail("coo"), roleIds: [roleId("operations")] }, { displayName: "Dual Role Lead", email: mail("two"), roleIds: [roleId("executive"), roleId("quality_head")] }];
 const made = await call(IDN, owner, "POST", `/api/identity/organizations/${A.id}/people`, { members: people });
 ok(made.mode === "logins" && made.members.length === 2 && made.members.every((m) => /^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(m.temporaryPassword ?? "")), "the owner creates two logins, each with a temporary password");
 const byEmail = Object.fromEntries(made.members.map((m) => [m.email, m]));
@@ -53,6 +53,7 @@ ok(wc.kpis.length > 0 && wc.me.roles.length === 1 && /Operations/.test(wc.me.rol
 ok(w2.me.roles.length === 2 && w2.kpis.length > wc.kpis.length, "someone with two roles sees what both allow");
 const refreshed = await call(API, owner, "GET", `${T}/workspace`);
 ok(refreshed.members.find((m) => m.email === mail("coo"))?.roleIds.length === 1, "the owner sees them in People with their roles");
+ok(refreshed.members.find((m) => m.email === mail("coo"))?.displayName === "Operations Lead", "the employee's name is preserved with their login");
 const log = await call(API, owner, "GET", `${T}/audit`);
 ok(log.filter((a) => a.event === "member.created_by_owner").length === 2, "the activity log says the owner created them");
 

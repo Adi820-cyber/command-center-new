@@ -4,6 +4,7 @@ import { request } from "./client";
 import "./v2.css";
 
 interface Turn {
+  id: string;
   question: string;
   answer?: WorkspaceAskResponse;
   error?: string;
@@ -15,12 +16,33 @@ const STARTERS = [
   "What is waiting for approval?",
   "Which actions are overdue?",
 ];
+const ignoreSeed = () => undefined;
 
 /**
  * Ask in plain words. The answer is built on the server from the figures this
  * person's own role can read, so it can never mention a KPI they cannot see.
  */
-export function AskPanel({ tenant, seed, onSeedUsed }: { tenant: string; seed: string; onSeedUsed: () => void }) {
+interface AskPanelProps {
+  tenant?: string;
+  seed?: string;
+  onSeedUsed?: () => void;
+  endpoint?: string;
+  title?: string;
+  note?: string;
+  starters?: readonly string[];
+  compact?: boolean;
+}
+
+export function AskPanel({
+  tenant,
+  seed = "",
+  onSeedUsed = ignoreSeed,
+  endpoint,
+  title = "Ask about your numbers",
+  note = "Answers come only from the KPIs your role can see. Every figure is a stored result, not a guess.",
+  starters = STARTERS,
+  compact = false,
+}: AskPanelProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,13 +53,14 @@ export function AskPanel({ tenant, seed, onSeedUsed }: { tenant: string; seed: s
     if (q.length < 2 || busy) return;
     setBusy(true);
     setQuestion("");
-    const index = turns.length;
-    setTurns((t) => [...t, { question: q }]);
+    const id = crypto.randomUUID();
+    setTurns((t) => [...t, { id, question: q }]);
     try {
-      const answer = await request(`/api/saas/${tenant}/ask`, WorkspaceAskResponseSchema, { question: q });
-      setTurns((t) => t.map((turn, i) => (i === index ? { ...turn, answer } : turn)));
+      const url = endpoint ?? `/api/saas/${tenant}/ask`;
+      const answer = await request(url, WorkspaceAskResponseSchema, { question: q });
+      setTurns((t) => t.map((turn) => (turn.id === id ? { ...turn, answer } : turn)));
     } catch (e) {
-      setTurns((t) => t.map((turn, i) => (i === index ? { ...turn, error: e instanceof Error ? e.message : "Could not answer." } : turn)));
+      setTurns((t) => t.map((turn) => (turn.id === id ? { ...turn, error: e instanceof Error ? e.message : "Could not answer." } : turn)));
     } finally {
       setBusy(false);
     }
@@ -56,18 +79,16 @@ export function AskPanel({ tenant, seed, onSeedUsed }: { tenant: string; seed: s
   }, [turns]);
 
   const last = turns.at(-1)?.answer;
-  const suggestions = last?.suggestions.length ? last.suggestions : STARTERS;
+  const suggestions = last?.suggestions.length ? last.suggestions : starters;
 
   return (
-    <section className="saas-card">
-      <h2>Ask about your numbers</h2>
-      <p className="ask-note">
-        Answers come only from the KPIs your role can see. Every figure is a stored result, not a guess.
-      </p>
+    <section className={`saas-card ask-panel${compact ? " compact" : ""}`}>
+      <h2>{title}</h2>
+      <p className="ask-note">{note}</p>
       <div className="ask-log" aria-live="polite">
         {turns.length === 0 && <p className="muted">Try one of the questions below, or type your own.</p>}
-        {turns.map((turn, i) => (
-          <div key={i} style={{ display: "grid", gap: 10 }}>
+        {turns.map((turn) => (
+          <div key={turn.id} style={{ display: "grid", gap: 10 }}>
             <div className="ask-q">{turn.question}</div>
             <div className="ask-a">
               {turn.error && <p role="alert">{turn.error}</p>}
@@ -77,8 +98,8 @@ export function AskPanel({ tenant, seed, onSeedUsed }: { tenant: string; seed: s
                   <p>{turn.answer.answer}</p>
                   {turn.answer.facts.length > 0 && (
                     <ul className="ask-facts">
-                      {turn.answer.facts.map((f, j) => (
-                        <li key={j}>
+                      {turn.answer.facts.map((f) => (
+                        <li key={`${f.label}:${f.value}`}>
                           <span className={`dot ${f.tone}`} aria-hidden="true" />
                           <span>
                             <strong>{f.label}</strong>: {f.value}

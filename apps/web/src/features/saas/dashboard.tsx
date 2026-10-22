@@ -64,6 +64,18 @@ function arrow(change: string | null): string {
   return change.startsWith("+") ? "▲" : change.startsWith("−") ? "▼" : "";
 }
 
+function targetProgress(point: KpiPoint): number | null {
+  if (point.number === null || point.result.target === null || point.kpi.direction === "neutral") return null;
+  const target = Number(point.result.target);
+  if (!Number.isFinite(target) || target === 0) return null;
+  const ratio = point.kpi.direction === "higher"
+    ? point.number / target
+    : point.number === 0
+      ? 1
+      : target / point.number;
+  return Math.max(0, Math.min(100, ratio * 100));
+}
+
 export function Dashboard({ workspace: w, change, ask, goto }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const points = useMemo(() => kpiPoints(w), [w]);
@@ -281,6 +293,7 @@ export function Dashboard({ workspace: w, change, ask, goto }: Props) {
           <div className="dash-grid">
             {list.map((p) => {
               const values = history(p);
+              const progress = targetProgress(p);
               return (
                 <article key={p.result.id} className={`kpi-tile ${p.tone}`}>
                   <h3>{p.kpi.name}</h3>
@@ -296,6 +309,11 @@ export function Dashboard({ workspace: w, change, ask, goto }: Props) {
                     )}
                   </div>
                   <Sparkline values={values} tone={p.tone} label={`Trend of ${p.kpi.name}`} />
+                  {progress !== null && (
+                    <div className="kpi-progress" aria-label={`${progress.toFixed(0)} percent of target`}>
+                      <div style={{ width: `${progress}%` }} />
+                    </div>
+                  )}
                   <small className="muted">
                     {p.period}
                     {p.result.target !== null && ` · target ${formatKpiValue(p.result.target, p.kpi.unit)}`}

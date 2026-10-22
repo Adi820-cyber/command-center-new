@@ -4,6 +4,7 @@ import { temporaryPassword, type AuthAdmin } from "./auth-admin.ts";
 import { hash } from "./helpers.ts";
 
 export interface Person {
+  displayName?: string;
   email: string;
   /** Template role keys (the operator's way). */
   roleKeys: string[];
@@ -66,11 +67,11 @@ export async function prepareLogins(people: readonly Person[], admin: AuthAdmin)
       const result = await admin.createUser(email, password);
       if (result.status === "created") {
         created.push(result.id);
-        entries.push({ email, owner: person.owner === true, ...rolesOf(person), subject: result.id });
+        entries.push({ email, displayName: person.displayName?.trim(), owner: person.owner === true, ...rolesOf(person), subject: result.id });
         shown.push({ email, roleKeys: person.roleIds ?? person.roleKeys, temporaryPassword: password });
       } else {
         const token = randomBytes(32).toString("hex");
-        entries.push({ email, owner: person.owner === true, ...rolesOf(person), tokenHash: hash(token) });
+        entries.push({ email, displayName: person.displayName?.trim(), owner: person.owner === true, ...rolesOf(person), tokenHash: hash(token) });
         shown.push({ email, roleKeys: person.roleIds ?? person.roleKeys, token });
       }
     }

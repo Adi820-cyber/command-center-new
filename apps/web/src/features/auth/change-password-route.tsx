@@ -20,14 +20,13 @@ const field = (data: FormData, name: string) => {
 /**
  * Changing your password. A 6-digit code is sent to your email first; the change
  * only happens with that code. This is also how a temporary password is replaced.
- * Where email codes are not set up yet, the page falls back to a direct change.
+ * Email verification is mandatory; there is no browser-only password bypass.
  */
 export function ChangePasswordRoute() {
   const [firstTime, setFirstTime] = useState(false);
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<"start" | "code" | "done">("start");
   const [sentTo, setSentTo] = useState("");
-  const [direct, setDirect] = useState(!import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +38,7 @@ export function ChangePasswordRoute() {
     });
   }, []);
   useEffect(() => {
-    if (cooldown <= 0) return;
+    if (cooldown <= 0) return undefined;
     const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
@@ -63,8 +62,7 @@ export function ChangePasswordRoute() {
       setCooldown(60);
     } catch (error) {
       const text = error instanceof Error ? error.message : "";
-      if (/not set up/.test(text)) setDirect(true);
-      else setMessage(text || "The code could not be sent.");
+      setMessage(text || "The code could not be sent.");
     } finally {
       setBusy(false);
     }
@@ -81,13 +79,7 @@ export function ChangePasswordRoute() {
     setBusy(true);
     setMessage("");
     try {
-      if (direct) {
-        const client = await getAuthClient();
-        const { error } = await client.auth.updateUser({ password, data: { must_change_password: false } });
-        if (error) throw new Error("Password could not be changed. Check your session and password requirements.");
-      } else {
-        await request("/api/identity/me/password", MutationResponseSchema, { code: field(data, "code").trim(), password });
-      }
+      await request("/api/identity/me/password", MutationResponseSchema, { code: field(data, "code").trim(), password });
       await finish();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Password could not be changed.");
@@ -99,10 +91,11 @@ export function ChangePasswordRoute() {
   const passwordFields = (
     <div className="space-y-4">
       <div>
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+        <label htmlFor="new-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
           New password
         </label>
         <input
+          id="new-password"
           name="password"
           type="password"
           minLength={12}
@@ -114,10 +107,11 @@ export function ChangePasswordRoute() {
         />
       </div>
       <div>
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+        <label htmlFor="confirm-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
           Confirm password
         </label>
         <input
+          id="confirm-password"
           name="confirmation"
           type="password"
           minLength={12}
@@ -133,8 +127,8 @@ export function ChangePasswordRoute() {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-950/95" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
         {/* Header */}
         <div className="p-6 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
           <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 mb-3 shadow-2xs">
@@ -176,18 +170,6 @@ export function ChangePasswordRoute() {
                 Go to Command Center
               </a>
             </div>
-          ) : direct ? (
-            <form onSubmit={(event) => void submit(event)} className="space-y-4">
-              {passwordFields}
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-              >
-                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Save Password</span>
-              </button>
-            </form>
           ) : step === "start" ? (
             <div className="space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
@@ -210,10 +192,11 @@ export function ChangePasswordRoute() {
                 A verification code was dispatched to <strong>{sentTo}</strong> (valid for 10 minutes).
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor="password-code" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   6-digit Verification Code
                 </label>
                 <input
+                  id="password-code"
                   name="code"
                   inputMode="numeric"
                   autoComplete="one-time-code"

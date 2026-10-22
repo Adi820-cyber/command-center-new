@@ -84,6 +84,7 @@ export function SaasRoute() {
   const [loading, setLoading] = useState(true);
   const generation = useRef(0);
   const [askSeed, setAskSeed] = useState("");
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [email, setEmail] = useState("");
   const reload = useCallback(async () => {
     if (!tenant) return;
@@ -370,6 +371,24 @@ export function SaasRoute() {
           </footer>
         </main>
       </div>
+      {workspace && tab !== "Ask" && (
+        <>
+          <button
+            type="button"
+            className="assistant-launcher"
+            aria-expanded={assistantOpen}
+            aria-controls="workspace-assistant"
+            onClick={() => setAssistantOpen((open) => !open)}
+          >
+            {assistantOpen ? "Close assistant" : "Ask AI"}
+          </button>
+          {assistantOpen && (
+            <aside id="workspace-assistant" className="assistant-drawer" aria-label="Role-scoped data assistant">
+              <AskPanel tenant={tenant} compact />
+            </aside>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -541,11 +560,14 @@ function DataEntry({
     useState<ReturnType<typeof BatchDetailSchema.parse>>();
   const [error, setError] = useState("");
   const [csv, setCsv] = useState("");
+  const availableMeasures = w.submissionMeasureKeys
+    ? w.measures.filter((measure) => w.submissionMeasureKeys!.includes(measure.key))
+    : w.measures;
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     const f = new FormData(e.currentTarget);
-    let rows = w.measures.flatMap((m) =>
+    let rows = availableMeasures.flatMap((m) =>
       text(f, m.key) ? [{ measure: m.key, value: text(f, m.key) }] : [],
     );
     if (csv.trim()) {
@@ -587,13 +609,13 @@ function DataEntry({
     <>
       <details className="saas-card">
         <summary>
-          <strong>Enter figures by hand instead</strong>
+          <strong>Enter a KPI check-in by hand instead</strong>
         </summary>
-        <h2>Submit a reporting period</h2>
+        <h2>Update assigned KPI inputs</h2>
         <p>
-          Leave unavailable measures blank. To correct a value, submit a new
-          batch for the same unit and exact period. Earlier approved inputs
-          remain in history.
+          Enter only the aggregate measures your role is responsible for. Your
+          role and unit permissions are checked again by the server. Leave
+          unavailable measures blank; approved corrections remain in history.
         </p>
         <form onSubmit={(event) => void submit(event)}>
           <div className="saas-form-grid">
@@ -620,7 +642,7 @@ function DataEntry({
             </Field>
           </div>
           <div className="saas-form-grid">
-            {w.measures.map((m) => (
+            {availableMeasures.map((m) => (
               <Field title={`${m.name} (${m.unit})`} key={m.key}>
                 <input
                   name={m.key}
@@ -645,7 +667,8 @@ function DataEntry({
               maxLength={60000}
             />
           </details>
-          <button disabled={!w.measures.length}>Submit for approval</button>
+          {!availableMeasures.length && <p className="muted">Your role has no KPI inputs assigned for submission.</p>}
+          <button disabled={!availableMeasures.length}>Submit for approval</button>
         </form>
       </details>
       {error && <p role="alert">{error}</p>}

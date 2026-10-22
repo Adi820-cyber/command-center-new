@@ -314,6 +314,7 @@ function Roles({
   const [editing, setEditing] = useState<Editing>();
   const [addingRoleId, setAddingRoleId] = useState<string>();
   const [loginEmail, setLoginEmail] = useState("");
+  const [loginName, setLoginName] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
@@ -345,7 +346,7 @@ function Roles({
   }
 
   async function handleCreateRoleLogin(roleId: string, roleNameStr: string) {
-    if (!loginEmail.trim() || loginPassword.length < 8) return;
+    if (!loginName.trim() || !loginEmail.trim() || loginPassword.length < 8) return;
     setLoginBusy(true);
     setLoginError("");
     setIssuedForRole(undefined);
@@ -355,6 +356,7 @@ function Roles({
         InviteMembersResponseSchema,
         {
           members: [{
+            displayName: loginName.trim(),
             email: loginEmail.trim(),
             roleIds: [roleId],
             password: loginPassword.trim() || undefined,
@@ -369,6 +371,7 @@ function Roles({
           people: result.members,
         },
       });
+      setLoginName("");
       setLoginEmail("");
       setLoginPassword(makeRandomPassword());
       setAddingRoleId(undefined);
@@ -433,7 +436,7 @@ function Roles({
           const draft = roleDraftFromGrants(role.grants);
           const count = holders(role.id);
           const isOpen = editing?.roleId === role.id;
-          const sees = draft.capabilities.some((c) => c === "view" || c === "act");
+          const sees = draft.capabilities.some((c) => c === "view" || c === "act" || c === "submit");
           const isAddingLogin = addingRoleId === role.id;
           const roleMembers = w.members.filter((m) => m.roleIds.includes(role.id));
 
@@ -510,6 +513,17 @@ function Roles({
                   >
                     <div style={{ display: "grid", gap: 10 }}>
                       <label>
+                        Name
+                        <input
+                          type="text"
+                          required
+                          maxLength={120}
+                          placeholder="Employee name"
+                          value={loginName}
+                          onChange={(e) => setLoginName(e.target.value)}
+                        />
+                      </label>
+                      <label>
                         Employee email
                         <input
                           type="email"
@@ -553,7 +567,7 @@ function Roles({
                       </label>
                       {loginError && <p role="alert" className="errors">{loginError}</p>}
                       <div className="csv-actions" style={{ marginTop: 4 }}>
-                        <button type="submit" disabled={loginBusy || !loginEmail.trim() || loginPassword.length < 8}>
+                        <button type="submit" disabled={loginBusy || !loginName.trim() || !loginEmail.trim() || loginPassword.length < 8}>
                           {loginBusy ? "Creating login…" : "Create employee login"}
                         </button>
                         <button type="button" className="secondary" onClick={() => setAddingRoleId(undefined)}>
@@ -741,13 +755,13 @@ function Roles({
                             <div className="csv-actions" style={{ marginTop: 4 }}>
                               <button
                                 type="button"
-                                onClick={async () => {
+                                onClick={() => void (async () => {
                                   const ok = await change(`/members/${m.id}/roles`, { roleIds: editingMemberRoles });
                                   if (ok) {
                                     setEditingMemberId(undefined);
                                     await reload();
                                   }
-                                }}
+                                })()}
                               >
                                 Save roles
                               </button>
@@ -801,7 +815,7 @@ function RoleEditor({
   }, [active, search]);
   const set = (patch: Partial<Editing>) => onChange({ ...value, ...patch });
   const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
-  const usesKpis = value.capabilities.includes("view") || value.capabilities.includes("act");
+  const usesKpis = value.capabilities.includes("view") || value.capabilities.includes("act") || value.capabilities.includes("submit");
   const usesScope = value.capabilities.some((c) => c !== "configure");
   const chosen = new Set(value.kpiIds);
 
@@ -824,7 +838,7 @@ function RoleEditor({
       : value.capabilities.length === 0
         ? "Choose at least one thing this role can do."
         : usesKpis && !value.allKpis && value.kpiIds.length === 0
-          ? "Choose the KPIs this role sees, or choose every KPI."
+          ? "Choose the KPIs this role can access, or choose every KPI."
           : "";
 
   return (
@@ -868,7 +882,7 @@ function RoleEditor({
 
       {usesKpis && (
         <fieldset className="kpi-pick">
-          <legend>Which KPIs this role sees</legend>
+          <legend>Which KPIs this role can see or update</legend>
           <div className="console-roles">
             <label>
               <input type="radio" name="kpi-mode" checked={value.allKpis} onChange={() => set({ allKpis: true })} />

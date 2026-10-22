@@ -28,8 +28,8 @@ export async function registerOwnerRoutes(app: FastifyInstance, options: SaasOpt
       const body = input(SaveRoleRequestSchema, req.body);
       if (body.capabilities.length === 0)
         throw new ApiError("invalid_request", "Choose at least one thing this role can do.");
-      if (body.kpiIds.length > 0 && !body.capabilities.some((c) => c === "view" || c === "act"))
-        throw new ApiError("invalid_request", "KPIs only apply to roles that can view or act on results.");
+      if (body.kpiIds.length > 0 && !body.capabilities.some((c) => c === "view" || c === "act" || c === "submit"))
+        throw new ApiError("invalid_request", "KPIs only apply to roles that can view, update, or act on results.");
       // Only active KPIs of this organization can be chosen.
       if (body.kpiIds.length > 0) {
         const rows = await tx.query("select id from kpi.definitions where tenant_id=$1 and state='active' and id = any($2::uuid[])", [

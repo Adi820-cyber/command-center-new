@@ -184,22 +184,25 @@ export function LoginRoute() {
   const actionData = useActionData<LoginActionData>();
   const navigation = useNavigation();
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [email, setEmail] = useState(actionData?.email ?? "");
+  const [password, setPassword] = useState("");
+  const [activeTier, setActiveTier] = useState<string | null>(null);
   const isSubmitting = navigation.state === "submitting";
 
   return (
-    <div className="min-h-screen flex bg-slate-900" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+    <div className="min-h-screen flex bg-slate-50" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
       {/* ─── Left Panel — Executive Command Center Branding ─── */}
       <div
-        className="hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col relative overflow-hidden"
+        className="hidden lg:flex lg:w-1/2 xl:w-3/5 flex-col relative overflow-hidden border-r border-slate-200"
         style={{
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f2744 100%)",
+          background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 45%, #eff6ff 100%)",
         }}
       >
         {/* Subtle grid pattern overlay */}
         <div
           className="absolute inset-0 opacity-[0.04]"
           style={{
-            backgroundImage: `linear-gradient(rgba(148,163,184,1) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,1) 1px, transparent 1px)`,
+            backgroundImage: `linear-gradient(rgba(148,163,184,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.4) 1px, transparent 1px)`,
             backgroundSize: "48px 48px",
           }}
         />
@@ -225,8 +228,8 @@ export function LoginRoute() {
               <Building2 size={20} className="text-white" />
             </div>
             <div>
-              <span className="text-white font-extrabold text-lg tracking-tight">Executive</span>
-              <span className="text-blue-400 text-sm font-semibold ml-1.5 uppercase tracking-wider">Command Center</span>
+              <span className="text-slate-900 font-extrabold text-lg tracking-tight">Executive</span>
+              <span className="text-blue-600 text-sm font-semibold ml-1.5 uppercase tracking-wider">Command Center</span>
             </div>
           </div>
 
@@ -235,17 +238,17 @@ export function LoginRoute() {
             <div
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 border"
               style={{
-                background: "rgba(59, 130, 246, 0.12)",
-                borderColor: "rgba(59, 130, 246, 0.25)",
+                background: "#eff6ff",
+                borderColor: "#bfdbfe",
               }}
             >
               <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-              <span className="text-blue-300 text-xs font-bold tracking-wider uppercase">
+              <span className="text-blue-700 text-xs font-bold tracking-wider uppercase">
                 Performance Telemetry & Decision Queue
               </span>
             </div>
 
-            <h1 className="text-4xl xl:text-5xl font-black text-white leading-tight mb-5 tracking-tight">
+            <h1 className="text-4xl xl:text-5xl font-black text-slate-900 leading-tight mb-5 tracking-tight">
               Decisions start with{" "}
               <span
                 style={{
@@ -258,7 +261,7 @@ export function LoginRoute() {
               </span>
             </h1>
 
-            <p className="text-slate-300 text-base xl:text-lg leading-relaxed mb-8">
+            <p className="text-slate-600 text-base xl:text-lg leading-relaxed mb-8">
               Turn authorized operational evidence into focused executive decisions and accountable actions across your entire organization.
             </p>
 
@@ -273,13 +276,13 @@ export function LoginRoute() {
                   key={item.step}
                   className="rounded-xl p-3.5 border"
                   style={{
-                    background: "rgba(255,255,255,0.04)",
-                    borderColor: "rgba(255,255,255,0.08)",
+                    background: "#ffffff",
+                    borderColor: "#e2e8f0",
                   }}
                 >
-                  <span className="text-xs font-mono font-bold text-blue-400">{item.step}</span>
-                  <div className="text-sm font-bold text-white mt-1">{item.label}</div>
-                  <div className="text-slate-400 text-[11px] mt-0.5 leading-tight">{item.desc}</div>
+                  <span className="text-xs font-mono font-bold text-blue-600">{item.step}</span>
+                  <div className="text-sm font-bold text-slate-900 mt-1">{item.label}</div>
+                  <div className="text-slate-500 text-[11px] mt-0.5 leading-tight">{item.desc}</div>
                 </div>
               ))}
             </div>
@@ -287,9 +290,9 @@ export function LoginRoute() {
 
           {/* Footer security notice */}
           <div className="flex items-center gap-2 mt-auto">
-            <Shield size={15} className="text-slate-400" />
-            <span className="text-slate-400 text-xs">
-              Enterprise operations workspace · End-to-end cryptographic audit trails
+            <Shield size={15} className="text-slate-500" />
+            <span className="text-slate-500 text-xs">
+              Multi-tenant workspace · Role-scoped access and auditable changes
             </span>
           </div>
         </div>
@@ -352,7 +355,8 @@ export function LoginRoute() {
                   name="email"
                   type="text"
                   autoComplete="username"
-                  defaultValue={actionData?.email}
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setActiveTier(null); }}
                   placeholder="name@organization.org"
                   required
                   spellCheck={false}
@@ -390,6 +394,8 @@ export function LoginRoute() {
                   name="password"
                   type={passwordVisible ? "text" : "password"}
                   autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setActiveTier(null); }}
                   placeholder="••••••••••••"
                   required
                   className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-sm font-medium transition-all focus:outline-none ${
@@ -432,6 +438,73 @@ export function LoginRoute() {
               )}
             </button>
           </Form>
+
+          {/* Quick-Switch Demo Credential Helper */}
+          <div className="mt-6 pt-5 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Quick-Switch Credential Helper
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">Click to fill credentials</span>
+            </div>
+
+            <div className="space-y-2">
+              {[
+                {
+                  id: "operator",
+                  tier: "Tier 1: Platform Operator",
+                  email: "ghanshamrn.a27@gmail.com",
+                  pass: "Ghansham@123",
+                  pill: "bg-blue-50 text-blue-700 border-blue-200",
+                  desc: "Super Admin · Tenant provisioning and privacy-safe AI",
+                },
+                {
+                  id: "owner",
+                  tier: "Tier 2: Organization Owner",
+                  email: "owner@kestrion.demo",
+                  pass: "Password@123",
+                  pill: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                  desc: "Tenant Admin · Role studio, custom KPIs and people",
+                },
+                {
+                  id: "role_person",
+                  tier: "Tier 3: Role Person",
+                  email: "hospital@kestrion.demo",
+                  pass: "Password@123",
+                  pill: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  desc: "Employee · Scoped dashboard, check-ins and restricted AI",
+                },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setEmail(preset.email);
+                    setPassword(preset.pass);
+                    setActiveTier(preset.id);
+                  }}
+                  className={`w-full text-left p-2.5 rounded-xl border transition-all text-xs flex items-center justify-between cursor-pointer ${
+                    activeTier === preset.id
+                      ? "border-blue-500 bg-blue-50/50 shadow-sm"
+                      : "border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${preset.pill}`}>
+                        {preset.tier}
+                      </span>
+                      <span className="font-semibold text-slate-900 truncate">{preset.email}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate">{preset.desc}</p>
+                  </div>
+                  <span className="text-[11px] font-bold text-blue-600 shrink-0">
+                    {activeTier === preset.id ? "Filled ✓" : "Use"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Workspace info & governance footer */}
           <div className="mt-8 pt-6 border-t border-slate-100 space-y-3">

@@ -5,7 +5,6 @@ import { z } from "zod";
 import {
   SetupProposalSchema,
   ProposalListSchema,
-  ControlOrganizationListSchema,
   SettingsSchema,
   PeriodLockSchema,
   ActionTransitionSchema,
@@ -29,6 +28,7 @@ import { registerV2Routes } from "./v2.ts";
 import { registerOwnerRoutes } from "./owner.ts";
 import { registerLifecycleRoutes } from "./lifecycle.ts";
 import { registerIdentityRoutes } from "./identity.ts";
+import { loadControlOrganizations } from "./operator-ask.ts";
 
 export type { SaasOptions } from "./helpers.ts";
 
@@ -237,6 +237,31 @@ export async function registerSaasRoutes(
     tenant(req, async (tx, t, sub) => {
       const b = input(InputBatchSchema, req.body);
       await permit(tx, t, "submit", b.unitId);
+      // A submit grant may be restricted to particular KPIs. Accept only the
+      // measures read by formulas the caller may submit for at this unit; this
+      // prevents a crafted request from updating another role's KPI inputs.
+      const permittedInputs = await tx.query(
+        `select measure_key from kpi.submittable_measure_keys($1::uuid,$2::uuid)`,
+        [t, b.unitId],
+      );
+      const knownInputs = await tx.query(
+        `select key from kpi.measures where tenant_id=$1`,
+        [t],
+      );
+      const knownMeasures = new Set(knownInputs.map((row) => z.string().parse(row.key)));
+      if (b.rows.some((row) => !knownMeasures.has(row.measure))) {
+        throw new ApiError("invalid_request", "One or more measure keys do not exist in this organization.");
+      }
+      const permittedMeasures = new Set(permittedInputs.map((row) => z.string().parse(row.measure_key)));
+      const forbiddenMeasures = b.rows
+        .map((row) => row.measure)
+        .filter((key) => !permittedMeasures.has(key));
+      if (forbiddenMeasures.length) {
+        throw new ApiError(
+          "forbidden",
+          "This role cannot submit one or more measures for the selected unit.",
+        );
+      }
       const payloadHash = hash(
         JSON.stringify({
           ...b,
@@ -543,13 +568,7 @@ export async function registerSaasRoutes(
     }),
   );
   app.get("/api/control/organizations", async (req) =>
-    inSubject(options.controlDatabase, await subject(req), async (tx) => {
-      return ControlOrganizationListSchema.parse(
-        await tx.query(
-          'select id,name,template_id as "templateId",status,status_changed_at::text as "statusChangedAt",purge_after::text as "purgeAfter",owner_email as "ownerEmail",owner_email_verified_at::text as "ownerEmailVerifiedAt" from kpi_control.list_organizations()',
-        ),
-      );
-    }, "kpi_control_app"),
+    inSubject(options.controlDatabase, await subject(req), loadControlOrganizations, "kpi_control_app"),
   );
   app.post("/api/control/organizations/:tenantId/proposals", async (req) =>
     inSubject(options.controlDatabase, await subject(req), async (tx) => {

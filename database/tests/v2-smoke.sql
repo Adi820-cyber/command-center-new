@@ -195,8 +195,9 @@ begin
   res := res || 'owner_replaces_grants=' || (n = 0) || ';';
   begin perform kpi.save_role(t, rid, 'X', jsonb_build_array(jsonb_build_object('capability','view','unitId',null,'kpiId',gen_random_uuid())));
     res := res || 'grant_to_unknown_kpi=ALLOWED(BUG);'; exception when foreign_key_violation then res := res || 'grant_to_unknown_kpi=blocked;'; end;
-  begin perform kpi.save_role(t, rid, 'X', jsonb_build_array(jsonb_build_object('capability','submit','unitId',null,'kpiId',k)));
-    res := res || 'submit_tied_to_kpi=ALLOWED(BUG);'; exception when check_violation then res := res || 'submit_tied_to_kpi=blocked;'; end;
+  perform kpi.save_role(t, rid, 'X', jsonb_build_array(jsonb_build_object('capability','submit','unitId',null,'kpiId',k)));
+  select count(*) into n from kpi.grants where tenant_id=t and role_id=rid and capability='submit' and kpi_id=k;
+  res := res || 'submit_tied_to_kpi=' || (n = 1) || ';';
   perform kpi.delete_role(t, rid);
   select count(*) into n from kpi.roles where tenant_id = t and id = rid;
   res := res || 'owner_deletes_unused_role=' || (n = 0) || ';';

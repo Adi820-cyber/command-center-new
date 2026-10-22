@@ -2,7 +2,7 @@
 
 **Status:** preparation only. No new hosted project or real-tenant data exists yet. The requested project could not be created because the `gbtech` Supabase organization has reached the Free-plan limit of two active projects. Resolve project capacity in the Supabase account before following the deployment steps. Do not pause or delete an existing project without an explicit decision.
 
-This runbook is for a **new, empty Supabase project** in `gbtech`, Mumbai (`ap-south-1`). The one new migration under `database/supabase/migrations` is the only migration source for this product. The historical `supabase/migrations` directory belongs to the former hospital application and must not be pushed to the new project.
+This runbook is for a **new, empty Supabase project** in `gbtech`, Mumbai (`ap-south-1`). The ordered migration chain under `database/supabase/migrations` is the only migration source for this product. The historical `supabase/migrations` directory belongs to the former hospital application and must not be pushed to the new project.
 
 ## 1. Create an empty Supabase project
 
@@ -22,7 +22,7 @@ npx supabase --workdir database db push --dry-run
 npx supabase --workdir database db push
 ```
 
-The CLI records successful migrations in the remote migration history and skips them on later pushes. Confirm that it applies only `20261015000100_kpi_platform.sql` and `20261016000100_catalog_templates_rollup.sql`; stop if it proposes any hospital migration. The working directory is `database` (the folder that contains `supabase/`), not `database/supabase`. The Supabase CLI documents the `db push` and `--dry-run` behavior in its [database migration reference](https://supabase.com/docs/reference/cli/supabase-db-push).
+The CLI records successful migrations in the remote migration history and skips them on later pushes. Confirm every proposed file is in `database/supabase/migrations` and begins with `20261015` or later; stop if it proposes any migration from the root historical `supabase/migrations` chain. The working directory is `database` (the folder that contains `supabase/`), not `database/supabase`. The Supabase CLI documents the `db push` and `--dry-run` behavior in its [database migration reference](https://supabase.com/docs/reference/cli/supabase-db-push).
 
 The migration creates schemas `kpi` and `kpi_control`, forced RLS policies, non-login permission roles `kpi_app` and `kpi_control_app`, and no demo organization, operator, seed records, or customer data.
 
@@ -36,7 +36,7 @@ npx supabase --workdir database db query --linked -f catalog-seed.sql
 
 Check the counts: 623 KPIs, 554 measures, 21 templates. Re-run the seed after the catalog changes (see [kpi-catalog.md](kpi-catalog.md)). Organizations that already used a template keep their own copy, so reseeding never changes a customer's KPIs.
 
-## 3. Create two restricted database login roles
+## 3. Create three restricted database login roles
 
 The migration intentionally creates permission roles with `NOLOGIN`. Create two separate login roles in the project database administration workflow, then grant membership:
 
@@ -44,6 +44,7 @@ The migration intentionally creates permission roles with `NOLOGIN`. Create two 
 |---|---|---|
 | `cc_kpi_data_login` | `kpi_app` | Customer data API |
 | `cc_kpi_control_login` | `kpi_control_app` | Platform control API |
+| `cc_kpi_identity_login` | `kpi_identity_app` | Owner/member login and emailed-code API |
 
 Both login roles must be `LOGIN`, `NOINHERIT`, `NOSUPERUSER`, and `NOBYPASSRLS`. Grant only the matching permission role (`GRANT kpi_app TO cc_kpi_data_login` and `GRANT kpi_control_app TO cc_kpi_control_login`). Never use the `postgres`, `service_role`, or browser-facing Supabase key as either runtime credential. The API switches to the matching `kpi_*` role inside each transaction; Supavisor transaction pooling discards transaction-local state at the end of that transaction.
 
@@ -53,15 +54,22 @@ Supabase documents custom roles and transaction-pooler connection strings [here]
 
 ## 4. Seed the first platform operator
 
-1. Create/invite the intended platform operator through Supabase Auth. The person signs in once; use the verified `auth.users.id` UUID for that account.
-2. Using the trusted database administrator path, add **only that reviewed subject** to `kpi_control.operators`:
+1. Create/invite `ghanshamrn.a27@gmail.com` through Supabase Auth and verify the mailbox. Set any initial password only in the approved Auth administration surface or secret manager; do not put it in source, migrations, deployment logs, or documentation.
+2. Resolve that exact verified account to its UUID using the trusted database administrator path:
+
+```sql
+select id from auth.users where lower(email) = 'ghanshamrn.a27@gmail.com';
+```
+
+Use exactly one returned UUID. Stop if the query returns zero or more than one row.
+3. Add **only that reviewed subject** to `kpi_control.operators`:
 
 ```sql
 insert into kpi_control.operators(subject)
 values ('<reviewed-auth-user-uuid>');
 ```
 
-3. Verify `/api/control/me` accepts that operator and rejects a normal customer subject. Never create an operator from a request, grant an operator customer membership, or seed operators in application migrations.
+4. Verify `/api/control/me` accepts that operator and rejects a normal customer subject. Never create an operator from a request, grant an operator customer membership, or seed operators in application migrations.
 
 The operator console can provision organization metadata and send configuration proposals. It has no ordinary query permissions for customer KPI inputs, results, actions, or tenant uploads. This is account-level separation; it does not make a managed-hosting provider technically incapable of accessing plaintext.
 
@@ -84,7 +92,7 @@ The same code as the other two, started with only:
 - `SUPABASE_URL`, `ALLOWED_ORIGINS` (the web origin), `PORT`
 - `IDENTITY_DATABASE_URL`: a login that is a member of `kpi_identity_app` and nothing else (create it like the others: `create role cc_kpi_identity_login login noinherit nosuperuser nobypassrls password '...'; grant kpi_identity_app to cc_kpi_identity_login;`)
 - `SUPABASE_SECRET_KEY` (sensitive)
-- For emailed codes (section 6b): `MAIL_PROVIDER=brevo`, `BREVO_API_KEY` (sensitive) and `MAIL_FROM` (a sender address verified in Brevo), plus optionally `MAIL_FROM_NAME` (default "Command Center"). Without them, the change-password page falls back to changing the password directly, without a code.
+- For emailed codes (section 6b): `MAIL_PROVIDER=brevo`, `BREVO_API_KEY` (sensitive) and `MAIL_FROM` (a sender address verified in Brevo), plus optionally `MAIL_FROM_NAME` (default "Command Center"). These are required for password changes; there is no browser-only fallback.
 
 Set `VITE_IDENTITY_API_BASE_URL` in the web build to its HTTPS origin. Without it, owners add people by invitation link only. The database login can ask whether someone owns an organization and add people to it; it cannot read any table. The API refuses to start with more than one database credential, and refuses the secret key next to `KPI_DATABASE_URL`.
 
@@ -110,7 +118,7 @@ The backend refuses to start if both database credentials are set in one process
 
 In the control console (`/operator`), the operator only creates the organization and its owner:
 
-1. Enter the organization name and the owner's email.
+1. Enter the organization name, industry, plan, owner name and owner email.
 2. Confirm that the email belongs to the owner, and choose whether to activate it now.
 3. Press **Create organization**. What happens next depends on whether the control API has `SUPABASE_SECRET_KEY`:
 
@@ -128,7 +136,7 @@ In the control console (`/operator`), the operator only creates the organization
 - **An industry template**: its KPIs, roles and what each role sees, all of which the owner can change afterwards. A template can be used only while the organization has no KPIs and no roles, so it never duplicates what the owner made.
 - **Their own setup**: KPIs from the KPI library or written from scratch, then roles that choose which KPIs they see.
 
-The owner then adds units, adds people with logins and roles (**People**), sets targets, and retires or adds KPIs at any time. The operator's list shows which template the owner chose ("Owner still choosing" until then). The control API still accepts `templateId` and `members` when creating an organization, for scripted setups.
+The owner then adds units, adds people with logins and roles (**People**), sets targets, and retires or adds KPIs at any time. The operator's list shows the plan, subscription state, owner credential status, user/role headcounts and which template the owner chose ("Owner still choosing" until then). It never shows KPI definitions, values, inputs, actions or customer operational data. The control API still accepts `templateId` and `members` when creating an organization, for scripted setups.
 
 **What the secret key can do, and why it is only on the control API.** It can create, change and delete any login in the project, which is far more than this feature needs. That is why the customer API (which reads customer data) must never have it, and why the configuration enforces that. It is a deliberate widening of what the control API can do: with the key, a compromise of the control API could alter logins, though it still has no read access to customer figures. If that is not acceptable for a customer, leave the key out and use invitation links. Rotate the key in Supabase if it is ever exposed.
 
@@ -205,6 +213,8 @@ Template KPIs start without targets, so nothing is "off target" until the owner 
 ### Ask
 
 Ask answers from the same figures the person's own role can see. The answer is built from stored results; no model is involved unless you configure one. To let a model reword answers, set `GROQ_API_KEY` (and optionally `OPENROUTER_API_KEY` with `OPENROUTER_MODEL`) on the customer API. The model receives only the finished answer text and may not add a number that is not already in it. This sends that text to the provider, so decide whether that is acceptable for your customers before enabling it. Leave the keys unset to keep every answer inside your own systems.
+
+The operator has a separate assistant whose only input is control-plane metadata: organization lifecycle, plan/subscription state, headcounts and whether owners replaced temporary passwords. It has no customer workspace connection and explicitly refuses requests for tenant KPIs or operational data.
 
 ## 7. Verify before using real data
 

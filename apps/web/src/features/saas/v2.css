@@ -14,16 +14,16 @@
 
 /* ---- Dashboard ---------------------------------------------------------- */
 .dash-brief {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f2744 100%);
-  color: #f8fafc;
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 55%, #eef2ff 100%);
+  color: #0f172a;
   border-radius: 16px;
   padding: 28px 32px;
   margin-bottom: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 4px 14px -6px rgba(37, 99, 235, 0.2);
 }
 .dash-brief .eyebrow {
-  color: #38bdf8;
+  color: #2563eb;
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 1.5px;
@@ -46,19 +46,19 @@
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #fff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
 }
 .dash-chip.good {
-  background: rgba(16, 185, 129, 0.18);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
 }
 .dash-chip.bad {
-  background: rgba(244, 63, 94, 0.18);
-  color: #fb7185;
-  border: 1px solid rgba(244, 63, 94, 0.35);
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
 }
 .dash-toolbar {
   display: flex;
@@ -238,6 +238,17 @@
 .spark polyline {
   fill: none !important;
 }
+.kpi-progress {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+.kpi-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+}
 .saas-badge.bad {
   background: var(--bad-bg);
   color: var(--bad);
@@ -261,8 +272,9 @@
 .ask-q {
   justify-self: end;
   max-width: 80%;
-  background: #122f30;
-  color: #fff;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
   padding: 12px 16px;
   border-radius: 14px 14px 2px 14px;
 }
@@ -948,7 +960,8 @@ fieldset.csv-choices {
   align-items: center;
   padding: 12px;
   border-radius: 12px;
-  background: rgb(255 255 255 / 8%);
+  background: #fff;
+  border: 1px solid #e2e8f0;
   min-width: 0;
 }
 .whoami-avatar {
@@ -969,7 +982,7 @@ fieldset.csv-choices {
   min-width: 0;
 }
 .whoami-text strong {
-  color: #fff;
+  color: #0f172a;
   font-size: 13px;
   font-weight: 600;
   overflow: hidden;
@@ -977,7 +990,7 @@ fieldset.csv-choices {
   white-space: nowrap;
 }
 .whoami-text small {
-  color: #c2d7d1;
+  color: #475569;
   font-size: 12px;
   line-height: 1.3;
   overflow: hidden;
@@ -985,8 +998,71 @@ fieldset.csv-choices {
   white-space: nowrap;
 }
 .whoami-text .whoami-org {
-  color: #8fb3a9;
+  color: #64748b;
   font-size: 11px;
+}
+
+/* ---- Persistent role-scoped assistant ---------------------------------- */
+.assistant-launcher,
+.saas-console .assistant-launcher {
+  position: fixed;
+  z-index: 60;
+  right: 24px;
+  bottom: 24px;
+  width: auto;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 9999px;
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 10px 24px -10px rgba(37, 99, 235, 0.65);
+  cursor: pointer;
+}
+.assistant-launcher:hover,
+.saas-console .assistant-launcher:hover {
+  background: #1d4ed8;
+}
+.assistant-drawer {
+  position: fixed;
+  z-index: 55;
+  right: 24px;
+  bottom: 82px;
+  width: min(430px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 112px));
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px -24px rgba(15, 23, 42, 0.35);
+}
+.assistant-drawer .saas-card {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+.ask-panel.compact .ask-log {
+  max-height: 340px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.ask-panel.compact .ask-suggestions {
+  max-height: 96px;
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .assistant-launcher,
+  .saas-console .assistant-launcher {
+    right: 16px;
+    bottom: 16px;
+  }
+  .assistant-drawer {
+    right: 16px;
+    bottom: 72px;
+    max-height: calc(100vh - 96px);
+  }
 }
 
 /* ---- Units: rename and delete in place --------------------------------- */
@@ -1101,4 +1177,3 @@ fieldset.csv-choices {
   font-size: 13px;
   font-weight: 600;
 }
-

@@ -6,12 +6,14 @@ const K1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const K2 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
 
 describe("expandRoleGrants", () => {
-  it("gives view and act one row per KPI, in the chosen scope", () => {
-    expect(expandRoleGrants({ capabilities: ["view", "act"], scopeUnitId: U1, kpiIds: [K1, K2] })).toEqual([
+  it("gives view, act and submit one row per KPI, in the chosen scope", () => {
+    expect(expandRoleGrants({ capabilities: ["view", "act", "submit"], scopeUnitId: U1, kpiIds: [K1, K2] })).toEqual([
       { capability: "view", unitId: U1, kpiId: K1 },
       { capability: "view", unitId: U1, kpiId: K2 },
       { capability: "act", unitId: U1, kpiId: K1 },
       { capability: "act", unitId: U1, kpiId: K2 },
+      { capability: "submit", unitId: U1, kpiId: K1 },
+      { capability: "submit", unitId: U1, kpiId: K2 },
     ]);
   });
 
@@ -19,9 +21,9 @@ describe("expandRoleGrants", () => {
     expect(expandRoleGrants({ capabilities: ["view"], scopeUnitId: null, kpiIds: [] })).toEqual([{ capability: "view", unitId: null, kpiId: null }]);
   });
 
-  it("never ties entering or approving data to one KPI, and never limits configure to a unit", () => {
+  it("ties submission to chosen KPIs but keeps approval unit-wide and configure organization-wide", () => {
     expect(expandRoleGrants({ capabilities: ["submit", "approve", "configure"], scopeUnitId: U1, kpiIds: [K1] })).toEqual([
-      { capability: "submit", unitId: U1, kpiId: null },
+      { capability: "submit", unitId: U1, kpiId: K1 },
       { capability: "approve", unitId: U1, kpiId: null },
       { capability: "configure", unitId: null, kpiId: null },
     ]);
@@ -59,7 +61,7 @@ describe("roleDraftFromGrants", () => {
           const draft = roundTrip({ capabilities: [...capabilities], scopeUnitId, kpiIds });
           expect(draft.custom, `${capabilities.join(",")}/${kpiIds.length}`).toBe(false);
           expect(draft.capabilities).toEqual(capabilities);
-          const usesKpis = capabilities.includes("view") || capabilities.includes("act");
+          const usesKpis = capabilities.includes("view") || capabilities.includes("act") || capabilities.includes("submit");
           expect(draft.kpiIds).toEqual(usesKpis ? kpiIds : []);
           const usesScope = capabilities.some((c) => c !== "configure");
           expect(draft.scopeUnitId).toBe(usesScope ? scopeUnitId : null);

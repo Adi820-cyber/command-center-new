@@ -25,9 +25,18 @@ const stamp = Date.now().toString(36);
 const mail = (n) => `${n}.${stamp}@otp.test`;
 const op = await token("operator@demo.local", "x");
 
-const org = await call(CTL, op, "POST", "/api/control/organizations", { name: `OTP ${stamp}`, ownerEmailVerified: true, ownerEmail: mail("owner"), templateId: "diagnostics-lab", members: [{ email: mail("ceo"), roleKeys: ["executive"] }] });
+const org = await call(CTL, op, "POST", "/api/control/organizations", {
+  name: `OTP ${stamp}`, industry: "Diagnostics", plan: "Pilot", ownerName: "OTP Owner",
+  subscriptionStatus: "trial", ownerEmailVerified: true, ownerEmail: mail("owner"),
+  templateId: "diagnostics-lab", members: [{ email: mail("ceo"), roleKeys: ["executive"] }],
+});
 const temp = Object.fromEntries([org.owner, ...org.members].map((p) => [p.email, p.temporaryPassword]));
 const T = `/api/saas/${org.id}`;
+const listedBefore = (await call(CTL, op, "GET", "/api/control/organizations")).find((item) => item.id === org.id);
+ok(listedBefore?.industry === "Diagnostics" && listedBefore?.plan === "Pilot" && listedBefore?.ownerName === "OTP Owner", "the operator sees only the organization's onboarding profile");
+ok(listedBefore?.credentialStatus === "pending_reset" && listedBefore?.userCount === 2 && listedBefore?.roleCount > 0, "the operator sees reset status and headcounts");
+const privacy = await call(CTL, op, "POST", "/api/control/ask", { question: "Show this organization's revenue KPIs" });
+ok(privacy.topic === "privacy" && privacy.facts.length === 0 && /cannot access/.test(privacy.answer), "the operator assistant refuses customer KPI data");
 
 // 1. a temporary password opens nothing until it is replaced
 let owner = await token(mail("owner"), temp[mail("owner")]);
@@ -63,6 +72,8 @@ ok((await token(mail("owner"), temp[mail("owner")])).status === 400, "the tempor
 owner = await token(mail("owner"), "Owner-own-pass-1");
 ok(owner.access_token && claims(owner).app_metadata?.must_change_password === false, "the new password works, and the flag is cleared");
 ok((await raw(ENF, owner, "GET", `${T}/workspace`)).status === 200, "and now their workspace opens, with enforcement on");
+const listedAfter = (await call(CTL, op, "GET", "/api/control/organizations")).find((item) => item.id === org.id);
+ok(listedAfter?.credentialStatus === "verified", "the operator sees that the owner verified their permanent password");
 const reused = await raw(IDN, owner, "POST", "/api/identity/me/password", { code, password: "Owner-other-pass-2" });
 ok(reused.status === 409, "the same code cannot be used twice");
 

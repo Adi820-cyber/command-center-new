@@ -24,6 +24,15 @@ export async function loadWorkspace(
     'select key,name,unit,description,rolls_up as "rollsUp" from kpi.measures where tenant_id=$1 order by name',
     [tenant],
   );
+  const submissionMeasures = await tx.query(
+    `select distinct s.measure_key
+     from kpi.units u
+     cross join lateral kpi.submittable_measure_keys($1::uuid,u.id) s
+     where u.tenant_id=$1
+     order by s.measure_key`,
+    [tenant],
+  );
+  const submissionMeasureKeys = submissionMeasures.map((row) => String(row.measure_key));
   const kpis = await tx.query(
     'select id,key,version,name,description,unit,formula,direction,target::text,state,domain,catalog_id as "catalogId",sort_order as "sortOrder" from kpi.definitions where tenant_id=$1 order by sort_order,key,version desc',
     [tenant],
@@ -58,6 +67,7 @@ export async function loadWorkspace(
     me: { owner: organization?.owner === true, roles: myRoles },
     units,
     measures,
+    submissionMeasureKeys,
     kpis,
     roles,
     members,

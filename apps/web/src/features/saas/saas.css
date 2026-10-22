@@ -22,9 +22,9 @@
 .saas-sidebar {
   width: 270px;
   flex-shrink: 0;
-  background: #0f172a;
-  border-right: 1px solid #1e293b;
-  color: #f8fafc;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  color: #0f172a;
   padding: 28px 20px;
   display: flex;
   flex-direction: column;
@@ -36,7 +36,7 @@
 .saas-brand {
   display: flex;
   gap: 12px;
-  color: #fff;
+  color: #0f172a;
   text-decoration: none;
   font-size: 20px;
   font-weight: 700;
@@ -66,7 +66,7 @@
 }
 .saas-sidebar nav button {
   background: transparent;
-  color: #94a3b8;
+  color: #475569;
   text-align: left;
   padding: 10px 14px;
   display: flex;
@@ -80,14 +80,14 @@
   transition: all 0.15s ease;
 }
 .saas-sidebar nav button:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #f8fafc;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 .saas-sidebar nav button.selected {
-  background: #1e293b;
-  color: #60a5fa;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-  border-left: 3px solid #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
+  border-left: 3px solid #2563eb;
   font-weight: 700;
 }
 .saas-sidebar-footer {
@@ -96,21 +96,21 @@
   font-size: 12px;
   display: grid;
   gap: 12px;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid #e2e8f0;
   padding-top: 16px;
 }
 .saas-sidebar-footer a {
-  color: #94a3b8;
+  color: #475569;
   text-decoration: none;
   transition: color 0.15s;
 }
 .saas-sidebar-footer a:hover {
-  color: #f8fafc;
+  color: #1d4ed8;
 }
 .saas-sidebar-footer button {
-  background: #1e293b;
-  color: #94a3b8;
-  border: 1px solid #334155;
+  background: #fff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12px;
@@ -118,13 +118,13 @@
   transition: all 0.15s ease;
 }
 .saas-sidebar-footer button:hover {
-  background: #334155;
-  color: #fff;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 .saas-sidebar select {
-  background: #1e293b;
-  color: #f8fafc;
-  border: 1px solid #334155;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
