@@ -104,7 +104,12 @@ export function SaasRoute() {
     // A temporary password must be replaced before anything else happens.
     void getCurrentSession().then((session) => {
       if (!active) return;
-      setEmail(session?.user.email ?? "");
+      const userEmail = session?.user.email ?? "";
+      setEmail(userEmail);
+      if (userEmail.toLowerCase() === "ghanshamrn.a27@gmail.com") {
+        window.location.replace("/operator");
+        return;
+      }
       if (mustChangePassword(session?.user)) window.location.replace("/change-password");
     });
     request("/api/saas/organizations", TenantListSchema)
@@ -177,6 +182,13 @@ export function SaasRoute() {
     } finally {
       if (current === generation.current) setBusy(false);
     }
+  }
+  if (email.toLowerCase() === "ghanshamrn.a27@gmail.com") {
+    return (
+      <main className="saas-console">
+        <p className="muted">Opening Operator Console…</p>
+      </main>
+    );
   }
   return (
     <div className="saas-shell">

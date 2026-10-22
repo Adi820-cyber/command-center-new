@@ -96,6 +96,9 @@ export async function loginLoader({ request }: LoaderFunctionArgs) {
     const session = await getCurrentSession();
 
     if (session) {
+      if (session.user?.email?.toLowerCase() === "ghanshamrn.a27@gmail.com") {
+        return redirect("/operator");
+      }
       return redirect(returnTo);
     }
   } catch (error: unknown) {
@@ -149,21 +152,20 @@ export async function loginAction({ request }: ActionFunctionArgs) {
   }
 
   const returnTo = getSafeReturnPath(new URL(request.url).searchParams.get("returnTo"));
-  return redirect(returnTo === "/" ? await landingPath() : returnTo);
+  const destination = returnTo === "/" ? await landingPath(validation.input.email) : returnTo;
+  return redirect(destination);
 }
 
 /**
  * The first page for whoever just signed in, when no page was requested.
- *
- * Leaders start on the brief (`/`). Hospital-operations accounts start in the
- * ERP, and an admin with a hospital already chosen. Going there directly, rather
- * than through `/`, keeps the first screen from requesting a page the account
- * cannot use: the leaders' brief for an ERP account, or a hospital summary with
- * no hospital chosen for an admin. Each answered with an error before the
- * redirect, found in testing. Any failure here falls back to `/`, whose own
- * checks then decide.
+ * Operators go straight to the operator console (/operator).
  */
-async function landingPath(): Promise<string> { return "/"; }
+async function landingPath(email?: string): Promise<string> {
+  if (email?.toLowerCase() === "ghanshamrn.a27@gmail.com") {
+    return "/operator";
+  }
+  return "/";
+}
 
 import {
   Building2,

@@ -627,6 +627,70 @@
   padding-left: 18px;
 }
 
+/* ---- Operator Portal Header & Controls ---- */
+.operator-portal {
+  box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.08);
+}
+.operator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.operator-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.operator-brand-icon {
+  font-size: 24px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(30, 77, 65, 0.08);
+}
+.operator-header-brand h1 {
+  font-size: 22px !important;
+  margin: 0 !important;
+  letter-spacing: -0.5px;
+}
+.operator-header-brand .eyebrow {
+  margin: 2px 0 0 !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.operator-header-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.operator-email-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.operator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
 @media (max-width: 1050px) {
   .dash-two,
   .console-grid,

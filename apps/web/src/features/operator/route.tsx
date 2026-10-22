@@ -178,38 +178,49 @@ export function OperatorConsoleRoute() {
   }
 
   return (
-    <main className="saas-console">
-      <a href="/">← Customer workspace</a>
-      <p className="muted" style={{ margin: "6px 0 0" }}>
-        Signed in as <strong>{email || "…"}</strong> ·{" "}
-        <button
-          type="button"
-          className="secondary"
-          style={{ padding: "2px 8px", fontSize: 12 }}
-          onClick={() => void signOut().then(() => window.location.assign("/login"))}
-        >
-          Sign out
-        </button>
-      </p>
-      <p className="eyebrow">PLATFORM SETUP</p>
-      <h1>Create an organization</h1>
-      <p>
-        You create the organization and its owner&apos;s login. The owner sets up the rest themselves: an industry
-        template or their own KPIs, the roles and what each one sees, the units, and the people. This console never
-        shows customer figures.
-      </p>
-
-      <form onSubmit={(event) => void create(event)}>
-        <div className="console-grid">
-          <label>
-            Organization name
-            <input name="name" required maxLength={120} />
-          </label>
-          <label>
-            Owner’s sign-in email
-            <input name="email" type="email" required />
-          </label>
+    <main className="saas-console operator-portal">
+      <header className="operator-header">
+        <div className="operator-header-brand">
+          <span className="operator-brand-icon">◈</span>
+          <div>
+            <h1>Command Center</h1>
+            <p className="eyebrow">PLATFORM OPERATOR CONSOLE</p>
+          </div>
         </div>
+        <div className="operator-header-user">
+          <span className="operator-email-pill">
+            <span className="operator-dot" />
+            Signed in as <strong>{email || "Operator"}</strong>
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            style={{ padding: "6px 14px", fontSize: 13 }}
+            onClick={() => void signOut().then(() => window.location.assign("/login"))}
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <section style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
+        <h2>Create an organization</h2>
+        <p className="muted" style={{ margin: "0 0 16px" }}>
+          You only create the organization and its owner&apos;s initial login. The owner configures their own business:
+          industry templates, custom KPIs, units, roles, and staff. This console never accesses customer business data.
+        </p>
+
+        <form onSubmit={(event) => void create(event)}>
+          <div className="console-grid">
+            <label>
+              Organization name
+              <input name="name" required maxLength={120} placeholder="e.g. Acme Corporation" />
+            </label>
+            <label>
+              Owner’s sign-in email
+              <input name="email" type="email" required placeholder="owner@acme.com" />
+            </label>
+          </div>
         <div className="console-checks">
           <label className="check-line">
             <input type="checkbox" name="verified" required />
@@ -230,10 +241,11 @@ export function OperatorConsoleRoute() {
           <button disabled={busy}>{busy ? "Creating…" : "Create organization"}</button>
         </div>
       </form>
-      {message && <output className="saas-message">{message}</output>}
-      {issued && <AccessPanel set={issued} />}
+    </section>
+    {message && <output className="saas-message">{message}</output>}
+    {issued && <AccessPanel set={issued} />}
 
-      <section>
+    <section>
         <h2>Organizations</h2>
         {organizations.length === 0 ? (
           <p className="muted">No organizations yet.</p>
