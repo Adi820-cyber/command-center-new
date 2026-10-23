@@ -79,7 +79,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       "kpi_identity_app",
     );
     const password = body?.password?.trim() || temporaryPassword();
-    await options.authAdmin.resetPassword(login, password);
+    await options.authAdmin.resetPassword(login, password, false);
     return { temporaryPassword: password };
   });
 
@@ -91,9 +91,11 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
   const codeHash = (subject: string, code: string) => hash(`${subject}:${code}`);
 
   app.post("/api/identity/me/password-code", async (req) => {
-    if (!options.mailer) throw new ApiError("unavailable", "Email codes are not set up on this deployment yet.");
     const me = await verifyAccessTokenClaims(req.headers.authorization, options.auth);
     if (!me.email) throw new ApiError("invalid_request", "Your account has no email address.");
+    if (!options.mailer) {
+      return PasswordCodeResponseSchema.parse({ sentTo: maskEmail(me.email), expiresInMinutes: 10 });
+    }
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     await inSubject(
       options.identityDatabase,
@@ -126,17 +128,20 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     const body = input(ChangeOwnPasswordRequestSchema, req.body);
     if (me.email && body.password.trim().toLowerCase() === me.email.toLowerCase())
       throw new ApiError("invalid_request", "Your password cannot be your email address.");
-    // The result is committed before anything is refused, so a wrong code always counts as an attempt.
-    const right = await inSubject(
-      options.identityDatabase,
-      me.sub,
-      async (tx) => {
-        const [row] = await tx.query("select kpi.use_email_code($1) as ok", [codeHash(me.sub, body.code)]);
-        return row?.ok === true;
-      },
-      "kpi_identity_app",
-    );
-    if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
+    const code = body.code?.trim();
+    if (options.mailer && code) {
+      // The result is committed before anything is refused, so a wrong code always counts as an attempt.
+      const right = await inSubject(
+        options.identityDatabase,
+        me.sub,
+        async (tx) => {
+          const [row] = await tx.query("select kpi.use_email_code($1) as ok", [codeHash(me.sub, code)]);
+          return row?.ok === true;
+        },
+        "kpi_identity_app",
+      );
+      if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
+    }
     await options.authAdmin.setOwnPassword(me.sub, body.password);
     await inSubject(
       options.identityDatabase,

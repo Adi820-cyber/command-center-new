@@ -12,10 +12,10 @@ import { randomInt } from "node:crypto";
 export type CreatedLogin = { status: "created"; id: string } | { status: "exists" };
 
 export interface AuthAdmin {
-  /** Creates a confirmed account that must choose its own password at first sign-in. */
-  createUser(email: string, password: string): Promise<CreatedLogin>;
-  /** Sets a new temporary password that must be changed (through the emailed code) at the next sign-in. */
-  resetPassword(id: string, password: string): Promise<void>;
+  /** Creates a confirmed account that can choose or keep its password. */
+  createUser(email: string, password: string, mustChangePassword?: boolean): Promise<CreatedLogin>;
+  /** Sets a new password for the user. */
+  resetPassword(id: string, password: string, mustChangePassword?: boolean): Promise<void>;
   /** Sets the person's own new password and clears the must-change flag. */
   setOwnPassword(id: string, password: string): Promise<void>;
   /** Best-effort removal, used to undo logins when the rest of a provisioning step fails. */
@@ -48,8 +48,29 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
     if (!response.ok) throw new Error(`The login service could not ${what} (status ${response.status}).`);
   }
 
+  async function findUser(email: string): Promise<{ id: string } | undefined> {
+    const target = email.trim().toLowerCase();
+    for (let page = 1; page <= 5; page++) {
+      try {
+        const res = await call(`${base}?page=${page}&per_page=50`, { method: "GET", headers, signal: signal() });
+        if (!res.ok) break;
+        const data: unknown = await res.json().catch(() => ({}));
+        const users = typeof data === "object" && data !== null && "users" in data && Array.isArray((data as { users: unknown[] }).users)
+          ? (data as { users: Array<{ id?: string; email?: string }> }).users
+          : [];
+        if (users.length === 0) break;
+        const found = users.find((u) => typeof u.email === "string" && u.email.trim().toLowerCase() === target);
+        if (found?.id) return { id: found.id };
+        if (users.length < 50) break;
+      } catch {
+        break;
+      }
+    }
+    return undefined;
+  }
+
   return {
-    async createUser(email, password) {
+    async createUser(email, password, mustChangePassword = true) {
       let response: Response;
       try {
         response = await call(base, {
@@ -60,9 +81,9 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
             email,
             password,
             email_confirm: true,
-            user_metadata: { must_change_password: true },
+            user_metadata: { must_change_password: mustChangePassword },
             // app_metadata cannot be changed by the person; the API trusts only this copy.
-            app_metadata: { must_change_password: true },
+            app_metadata: { must_change_password: mustChangePassword },
           }),
         });
       } catch {
@@ -72,7 +93,23 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
         const body: unknown = await response.json().catch(() => ({}));
         const code = typeof body === "object" && body !== null && "error_code" in body ? body.error_code : undefined;
         const message = typeof body === "object" && body !== null && "msg" in body ? String(body.msg) : "";
-        if (code === "email_exists" || /already (been )?registered|already exists/i.test(message)) return { status: "exists" };
+        if (code === "email_exists" || /already (been )?registered|already exists/i.test(message)) {
+          const existing = await findUser(email);
+          if (existing?.id) {
+            await update(
+              existing.id,
+              {
+                password,
+                email_confirm: true,
+                user_metadata: { must_change_password: mustChangePassword },
+                app_metadata: { must_change_password: mustChangePassword },
+              },
+              "update existing user credentials",
+            );
+            return { status: "created", id: existing.id };
+          }
+          return { status: "exists" };
+        }
         throw new Error("The login service refused this account. Check the email and the password rules.");
       }
       if (!response.ok) throw new Error(`The login service could not create the account (status ${response.status}).`);
@@ -82,8 +119,8 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
       return { status: "created", id };
     },
 
-    async resetPassword(id, password) {
-      await update(id, { password, user_metadata: { must_change_password: true }, app_metadata: { must_change_password: true } }, "reset the password");
+    async resetPassword(id, password, mustChangePassword = true) {
+      await update(id, { password, user_metadata: { must_change_password: mustChangePassword }, app_metadata: { must_change_password: mustChangePassword } }, "reset the password");
     },
 
     async setOwnPassword(id, password) {

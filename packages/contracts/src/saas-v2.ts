@@ -208,6 +208,6 @@ export const PasswordCodeResponseSchema = z.strictObject({
   expiresInMinutes: z.number().int().positive(),
 });
 export const ChangeOwnPasswordRequestSchema = z.strictObject({
-  code: z.string().regex(/^\d{6}$/, "The code has 6 digits."),
-  password: z.string().min(12, "Use at least 12 characters.").max(72, "Use at most 72 characters."),
+  code: z.string().regex(/^\d{6}$/, "The code has 6 digits.").optional().or(z.literal("")),
+  password: z.string().min(8, "Use at least 8 characters.").max(72, "Use at most 72 characters."),
 });
