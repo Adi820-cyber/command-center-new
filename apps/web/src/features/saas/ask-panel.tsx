@@ -95,6 +95,23 @@ export function AskPanel({
               {!turn.answer && !turn.error && <p className="muted">Looking at your results…</p>}
               {turn.answer && (
                 <>
+                  {turn.answer.roleBadge && (
+                    <div className="ask-role-badge">
+                      <span className="ask-role-icon">🛡️</span>
+                      <span className="ask-role-text">{turn.answer.roleBadge}</span>
+                      {turn.answer.searchEngine && (
+                        <span className="ask-engine-pill">
+                          {turn.answer.searchEngine === "pgvector_hybrid"
+                            ? "pgvector hybrid"
+                            : turn.answer.searchEngine === "pgvector"
+                              ? "pgvector"
+                              : turn.answer.searchEngine === "fts"
+                                ? "semantic search"
+                                : "verified facts"}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p>{turn.answer.answer}</p>
                   {turn.answer.facts.length > 0 && (
                     <ul className="ask-facts">
@@ -108,8 +125,23 @@ export function AskPanel({
                       ))}
                     </ul>
                   )}
-                  <small className="muted">
-                    {turn.answer.mode === "ai" ? "Wording improved by AI; figures unchanged." : "Built directly from your results."}
+                  {turn.answer.sources && turn.answer.sources.length > 0 && (
+                    <div className="ask-sources">
+                      <span className="ask-sources-label">Role-Authorized Sources:</span>
+                      <div className="ask-sources-list">
+                        {turn.answer.sources.map((s, idx) => (
+                          <span key={idx} className="ask-source-pill" title={`Category: ${s.category}`}>
+                            {s.title}
+                            {typeof s.similarity === "number" ? ` (${Math.round(s.similarity * 100)}%)` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <small className="muted" style={{ display: "block", marginTop: 8 }}>
+                    {turn.answer.mode === "ai"
+                      ? "Wording synthesized with numeric guardrails; role-scoping enforced via PostgreSQL RLS."
+                      : "Filtered strictly to what your role is permitted to see."}
                   </small>
                 </>
               )}

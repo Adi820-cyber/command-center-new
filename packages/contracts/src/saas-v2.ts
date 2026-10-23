@@ -122,6 +122,12 @@ export const WorkspaceAskFactSchema = z.strictObject({
   /** Whether the figure is good, bad or neither, for colouring. */
   tone: z.enum(["good", "bad", "neutral"]),
 });
+export const WorkspaceAskSourceSchema = z.strictObject({
+  title: z.string(),
+  category: z.string(),
+  matchedBy: z.string().optional(),
+  similarity: z.number().optional(),
+});
 export const WorkspaceAskResponseSchema = z.strictObject({
   answer: z.string(),
   /** `facts` is built directly from the caller's data. `ai` is the same answer reworded. */
@@ -131,7 +137,11 @@ export const WorkspaceAskResponseSchema = z.strictObject({
   /** Results the answer is based on, so the caller can open the evidence. */
   resultIds: z.array(z.uuid()).max(30),
   suggestions: z.array(z.string()).max(6),
+  roleBadge: z.string().optional(),
+  sources: z.array(WorkspaceAskSourceSchema).max(10).optional(),
+  searchEngine: z.enum(["pgvector_hybrid", "pgvector", "fts", "deterministic"]).optional(),
 });
+export type WorkspaceAskSource = z.infer<typeof WorkspaceAskSourceSchema>;
 export type WorkspaceAskResponse = z.infer<typeof WorkspaceAskResponseSchema>;
 
 // ---------------------------------------------------------------------------

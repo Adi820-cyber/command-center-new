@@ -21,6 +21,7 @@ import { activateDraft, hash, input, inSubject, makeRunners, uuid, type SaasOpti
 import { assertDistinct, prepareLogins } from "./logins.ts";
 import { loadWorkspace } from "./workspace.ts";
 import { answerOperatorQuestion, loadControlOrganizations } from "./operator-ask.ts";
+import { embeddingProvider, generateEmbedding } from "../chatbot/embedder.ts";
 
 const CATALOG_ID = z.string().regex(/^[A-Z]{2,4}-\d{3}$/);
 const newToken = () => randomBytes(32).toString("hex");
@@ -112,26 +113,156 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
     }),
   );
 
-  // Ask: answered only from what the caller's own role can read.
+  // Ask: answered only from what the caller's own role can read, powered by pgvector hybrid search.
   app.post("/api/saas/:tenantId/ask", async (req) => {
     const { question } = input(WorkspaceAskRequestSchema, req.body);
-    const facts = await tenant(
+
+    const embProvider = options.askProviders ? embeddingProvider(options.askProviders) : undefined;
+    let queryVec: number[] | null = null;
+    if (embProvider) {
+      try {
+        queryVec = await generateEmbedding(question, { provider: embProvider });
+      } catch {
+        queryVec = null;
+      }
+    }
+    const vecStr = queryVec && queryVec.length === 1024 ? `[${queryVec.join(",")}]` : null;
+
+    const result = await tenant(
       req,
-      async (tx, t, sub) => answerQuestion(question, await loadWorkspace(tx, t, sub), new Date().toISOString().slice(0, 10)),
+      async (tx, t, sub) => {
+        // Ensure knowledge chunks exist
+        const [cnt] = await tx.query<{ c: number }>(
+          "select count(*)::int as c from kpi.knowledge_chunks where tenant_id = $1::uuid",
+          [t],
+        );
+        if (!cnt || cnt.c === 0) {
+          try {
+            await tx.query("select kpi.refresh_tenant_knowledge($1::uuid)", [t]);
+          } catch {
+            // Ignore if refresh cannot run
+          }
+        }
+
+        // Determine active role badge
+        const [ownerRow] = await tx.query<{ is_owner: boolean }>(
+          "select kpi.is_owner($1::uuid) as is_owner",
+          [t],
+        );
+        let roleBadge = "Member Scoped View";
+        if (ownerRow?.is_owner) {
+          roleBadge = "Organization Owner (Full Access)";
+        } else {
+          const myRoles = await tx.query<{ name: string }>(
+            "select name from kpi.my_roles($1::uuid)",
+            [t],
+          );
+          if (myRoles.length > 0) {
+            roleBadge = `${myRoles.map((r) => r.name).join(", ")} View`;
+          }
+        }
+
+        // Query role-scoped knowledge chunks via security-invoking search function
+        interface KnowledgeRow {
+          id: string;
+          title: string;
+          content: string;
+          category: string;
+          domain: string;
+          source: string;
+          similarity: number;
+          matched_by: string;
+          kpi_id: string | null;
+          unit_id: string | null;
+        }
+        let knowledgeMatches: KnowledgeRow[] = [];
+        try {
+          if (vecStr) {
+            knowledgeMatches = await tx.query<KnowledgeRow>(
+              "select id, title, content, category, domain, source, similarity, matched_by, kpi_id, unit_id from kpi.search_knowledge($1::uuid, $2, $3::public.vector, 5, 0.15)",
+              [t, question, vecStr],
+            );
+          } else {
+            knowledgeMatches = await tx.query<KnowledgeRow>(
+              "select id, title, content, category, domain, source, similarity, matched_by, kpi_id, unit_id from kpi.search_knowledge($1::uuid, $2, null, 5, 0.15)",
+              [t, question],
+            );
+          }
+        } catch {
+          // If search query fails, gracefully fallback
+          knowledgeMatches = [];
+        }
+
+        // Calculate deterministic facts from workspace
+        const workspace = await loadWorkspace(tx, t, sub);
+        const facts = answerQuestion(question, workspace, new Date().toISOString().slice(0, 10));
+
+        const sources = knowledgeMatches.map((m) => ({
+          title: m.title,
+          category: m.category,
+          matchedBy: m.matched_by || (queryVec ? "vector" : "text"),
+          similarity: typeof m.similarity === "number" ? Math.round(m.similarity * 100) / 100 : undefined,
+        }));
+
+        const searchEngine: "pgvector_hybrid" | "pgvector" | "fts" | "deterministic" =
+          queryVec && knowledgeMatches.some((m) => m.matched_by === "hybrid" || m.matched_by === "vector")
+            ? "pgvector_hybrid"
+            : knowledgeMatches.length > 0
+              ? "fts"
+              : "deterministic";
+
+        let answer = facts.answer;
+        const augmentedFacts = [...facts.facts];
+
+        // If unknown or no data, but vector knowledge found relevant role-authorized chunks
+        if (facts.topic === "unknown" && knowledgeMatches.length > 0) {
+          const top = knowledgeMatches[0]!;
+          answer = `Based on your authorized ${roleBadge}: ${top.content}`;
+          for (const m of knowledgeMatches.slice(0, 3)) {
+            if (!augmentedFacts.some((f) => f.label === m.title)) {
+              augmentedFacts.push({
+                label: m.title,
+                value: m.category === "kpi_definition" ? m.domain : m.content.slice(0, 80) + "…",
+                tone: "neutral",
+              });
+            }
+          }
+        }
+
+        return {
+          facts: {
+            ...facts,
+            answer,
+            facts: augmentedFacts.slice(0, 30),
+            roleBadge,
+            sources,
+            searchEngine,
+          },
+          knowledgeMatches,
+        };
+      },
       false,
     );
-    let answer = facts.answer;
+
+    let answer = result.facts.answer;
     let mode: "facts" | "ai" = "facts";
-    if (options.askProviders?.length && !PLAIN_TOPICS.has(facts.topic)) {
+    if (options.askProviders?.length && !PLAIN_TOPICS.has(result.facts.topic)) {
       // The model only rewords. It may not add a number that is not already in the answer or its facts.
-      const source = [facts.answer, ...facts.facts.map((f) => `${f.label} ${f.value}`)].join(" ");
-      const outcome = await narrate(facts.answer, { providers: options.askProviders }, source);
+      const knowledgeContext = result.knowledgeMatches.map((m) => `${m.title}: ${m.content}`).join(" ");
+      const source = [
+        result.facts.answer,
+        ...result.facts.facts.map((f) => `${f.label} ${f.value}`),
+        knowledgeContext,
+      ].join(" ");
+
+      const outcome = await narrate(result.facts.answer, { providers: options.askProviders }, source);
       if (outcome.status === "narrated") {
         answer = outcome.answer;
         mode = "ai";
       }
     }
-    return WorkspaceAskResponseSchema.parse({ ...facts, answer, mode });
+
+    return WorkspaceAskResponseSchema.parse({ ...result.facts, answer, mode });
   });
 
   // --- Operator ---------------------------------------------------------------
