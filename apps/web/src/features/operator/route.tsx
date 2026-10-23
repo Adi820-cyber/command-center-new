@@ -140,6 +140,7 @@ export function OperatorConsoleRoute() {
 
       {/* ── Main SaaS Organizations & Clients Manager ── */}
       <SaaSOrganizationsManager
+        operatorEmail={email}
         onSelectWorkspace={(tenantId) => {
           window.location.assign(`/?tenant=${tenantId}`);
         }}

@@ -9,6 +9,7 @@ import {
 } from "@orbit/contracts";
 import { request } from "../saas/client";
 import { AccessPanel, type IssuedSet } from "../saas/access-panel";
+import { getCurrentSession } from "../../lib/auth";
 
 export type ControlOrganization = ReturnType<typeof ControlOrganizationListSchema.parse>[number];
 
@@ -21,6 +22,8 @@ interface SaaSOrganizationsManagerProps {
   title?: string;
   /** Header description */
   description?: string;
+  /** Operator email to prevent self-tenant conflict */
+  operatorEmail?: string;
 }
 
 export interface IndustryMeta {
@@ -600,6 +603,7 @@ export function SaaSOrganizationsManager({
   currentTenantId,
   title = "SaaS Organizations & Clients",
   description = "Manage all client organizations subscribed to your platform. Control lifecycle access (stop / suspend, activate), monitor staff counts, and onboard new organizations with predefined industry KPIs.",
+  operatorEmail,
 }: SaaSOrganizationsManagerProps) {
   const [organizations, setOrganizations] = useState<ControlOrganization[]>([]);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
@@ -614,6 +618,21 @@ export function SaaSOrganizationsManager({
   const [customIndustry, setCustomIndustry] = useState("");
   const [issued, setIssued] = useState<IssuedSet>();
   const [confirming, setConfirming] = useState<{ id: string; kind: "delete" | "erase"; typed: string }>();
+
+  // Operator user email and form states
+  const [operatorUserEmail, setOperatorUserEmail] = useState(operatorEmail ?? "");
+  const [ownerEmailInput, setOwnerEmailInput] = useState("");
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    if (operatorEmail) {
+      setOperatorUserEmail(operatorEmail);
+    } else {
+      void getCurrentSession().then((s) => {
+        if (s?.user?.email) setOperatorUserEmail(s.user.email);
+      });
+    }
+  }, [operatorEmail]);
 
   // Track current timestamp for 30-day purge allowance check
   const [now, setNow] = useState(() => Date.now());
@@ -806,6 +825,14 @@ export function SaaSOrganizationsManager({
       return typeof val === "string" ? val.trim() : "";
     };
 
+    const ownerEmail = field("email");
+    if (operatorUserEmail && ownerEmail.toLowerCase() === operatorUserEmail.toLowerCase()) {
+      const err = `You are signed in as the platform operator (${operatorUserEmail}). An operator account manages the entire platform and cannot be assigned as the owner of a tenant organization. Please use the client's email address (e.g. client@example.com or owner@clientorg.com).`;
+      setFormError(err);
+      setMessage(err);
+      return;
+    }
+
     const chosenTemplate = availableTemplates.find((t) => t.id === selectedTemplateId);
     const chosenMeta = chosenTemplate ? INDUSTRY_CATALOGUE_META[chosenTemplate.id] : undefined;
     const finalIndustry = selectedTemplateId === "custom"
@@ -816,13 +843,14 @@ export function SaaSOrganizationsManager({
     setBusy(true);
     setIssued(undefined);
     setMessage("");
+    setFormError("");
     try {
       const result = await request("/api/control/organizations", ProvisionResponseSchema, {
         name: field("name"),
         industry: finalIndustry,
-        plan: field("plan") || "Pilot",
+        plan: field("plan") || "Enterprise Pilot",
         ownerName: field("ownerName"),
-        ownerEmail: field("email"),
+        ownerEmail,
         subscriptionStatus: "active",
         templateId: finalTemplateId,
         ownerEmailVerified: true,
@@ -838,10 +866,14 @@ export function SaaSOrganizationsManager({
         `Organization “${field("name")}” has been added with ${chosenTemplate?.kpiCount ?? 0} predefined KPIs! Initial credentials or invite link are displayed below.`,
       );
       form.reset();
+      setOwnerEmailInput("");
+      setFormError("");
       setShowCreateForm(false);
       await refresh();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Unable to create organization.");
+      const err = e instanceof Error ? e.message : "Unable to create organization.";
+      setFormError(err);
+      setMessage(err);
     } finally {
       setBusy(false);
     }
@@ -872,7 +904,10 @@ export function SaaSOrganizationsManager({
           {!showCreateForm && (
             <button
               type="button"
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setFormError("");
+                setShowCreateForm(true);
+              }}
               style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}
             >
               <span>＋</span>
@@ -980,7 +1015,15 @@ export function SaaSOrganizationsManager({
                 Provision a new client tenant organization with ready-made industry KPIs and preconfigured leadership roles.
               </p>
             </div>
-            <button type="button" className="secondary" onClick={() => setShowCreateForm(false)}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setShowCreateForm(false);
+                setFormError("");
+                setOwnerEmailInput("");
+              }}
+            >
               ✕ Cancel
             </button>
           </div>
@@ -1061,9 +1104,41 @@ export function SaaSOrganizationsManager({
               </label>
               <label>
                 Owner Sign-In Email *
-                <input name="email" type="email" required placeholder="owner@clientorg.com" />
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="owner@clientorg.com"
+                  value={ownerEmailInput}
+                  onChange={(e) => {
+                    setOwnerEmailInput(e.target.value);
+                    if (formError) setFormError("");
+                  }}
+                />
               </label>
             </div>
+
+            {operatorUserEmail && ownerEmailInput.trim().toLowerCase() === operatorUserEmail.toLowerCase() && (
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "#fffbeb",
+                  border: "1.5px solid #f59e0b",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "#92400e",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <span style={{ fontSize: 16 }}>⚠️</span>
+                <div>
+                  <strong>Operator Account Detected:</strong> You are currently signed in as the platform operator (<code>{operatorUserEmail}</code>). An operator cannot be assigned as the owner of an individual tenant organization. Please specify the client's email address (e.g., <code>owner@clientorg.com</code>).
+                </div>
+              </div>
+            )}
 
             {/* ── Predefined KPI Details & Sample Showcase Box ── */}
             {selectedTemplate && selectedTemplateId !== "custom" && (
@@ -1192,11 +1267,45 @@ export function SaaSOrganizationsManager({
               </label>
             </div>
 
+            {formError && (
+              <div
+                role="alert"
+                className="saas-message attention"
+                style={{
+                  margin: "16px 0",
+                  padding: "12px 16px",
+                  background: "#fef2f2",
+                  border: "1.5px solid #ef4444",
+                  borderRadius: 8,
+                  color: "#991b1b",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+                <div>
+                  <div style={{ fontWeight: 800, marginBottom: 2 }}>Unable to Provision Organization</div>
+                  <div>{formError}</div>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 12 }}>
               <button type="submit" disabled={busy} style={{ fontWeight: 700 }}>
                 {busy ? "Provisioning Organization…" : "Create & Provision Organization"}
               </button>
-              <button type="button" className="secondary" onClick={() => setShowCreateForm(false)}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setFormError("");
+                  setOwnerEmailInput("");
+                }}
+              >
                 Cancel
               </button>
             </div>
