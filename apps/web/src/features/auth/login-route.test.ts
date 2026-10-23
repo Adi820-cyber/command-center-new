@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSafeReturnPath, signInEmail, validateLoginInput } from "./login-route";
+import { getSafeReturnPath, loginLoader, signInEmail, validateLoginInput } from "./login-route";
 
 describe("getSafeReturnPath", () => {
   it("keeps a local Orbit path", () => {
@@ -60,5 +60,13 @@ describe("validateLoginInput", () => {
     expect(validateLoginInput(formData)).toEqual({email:"hospital",errors:{email:"Enter a valid work email."}});
     expect(signInEmail("admin")).toBe("admin");
     expect(signInEmail("leader@organization.org")).toBe("leader@organization.org");
+  });
+});
+
+describe("loginLoader", () => {
+  it("renders login and clears stale sessions when reset=success is present", async () => {
+    const request = new Request("https://orbit.invalid/login?reset=success");
+    const result = await loginLoader({ request, params: {} } as any);
+    expect(result).toBeNull();
   });
 });

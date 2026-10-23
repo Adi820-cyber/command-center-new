@@ -5,11 +5,13 @@ import {
   redirect,
   useActionData,
   useNavigation,
+  useSearchParams,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
 import {
   AuthConfigurationError,
+  getAuthClient,
   getCurrentSession,
   signInWithPassword,
 } from "../../lib/auth";
@@ -90,9 +92,21 @@ export function validateLoginInput(formData: FormData):
 }
 
 export async function loginLoader({ request }: LoaderFunctionArgs) {
-  const returnTo = getSafeReturnPath(new URL(request.url).searchParams.get("returnTo"));
+  const url = new URL(request.url);
+  const isResetSuccess = url.searchParams.get("reset") === "success";
+  const returnTo = getSafeReturnPath(url.searchParams.get("returnTo"));
 
   try {
+    if (isResetSuccess) {
+      try {
+        const client = await getAuthClient();
+        await client.auth.signOut();
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+
     const session = await getCurrentSession();
 
     if (session) {
@@ -166,10 +180,13 @@ import {
 } from "lucide-react";
 
 export function LoginRoute() {
+  const [searchParams] = useSearchParams();
+  const resetSuccess = searchParams.get("reset") === "success";
+  const emailParam = searchParams.get("email") ?? "";
   const actionData = useActionData<LoginActionData>();
   const navigation = useNavigation();
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [email, setEmail] = useState(actionData?.email ?? "");
+  const [email, setEmail] = useState(actionData?.email ?? emailParam);
   const [password, setPassword] = useState("");
   const [activeTier, setActiveTier] = useState<string | null>(null);
   const isSubmitting = navigation.state === "submitting";
@@ -311,6 +328,26 @@ export function LoginRoute() {
               Enter the work account provisioned for your authorized role and scope.
             </p>
           </header>
+
+          {/* Password Reset Success Notice */}
+          {resetSuccess && (
+            <div
+              role="status"
+              className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3 shadow-xs animate-in fade-in"
+            >
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 mt-0.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-emerald-900">
+                  Password Updated Successfully
+                </div>
+                <div className="text-xs text-emerald-700 leading-relaxed">
+                  Your password has been changed. Please sign in with your new credentials to continue.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error Alert */}
           {actionData?.message && (

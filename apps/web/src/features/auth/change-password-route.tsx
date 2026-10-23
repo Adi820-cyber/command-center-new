@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { MutationResponseSchema, PasswordCodeResponseSchema } from "@orbit/contracts";
-import { KeyRound, ShieldCheck, Mail, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
+import { KeyRound, ShieldCheck, Mail, ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { getAuthClient, getCurrentSession } from "../../lib/auth";
 import { request } from "../saas/client";
 
@@ -44,12 +44,19 @@ export function ChangePasswordRoute() {
   }, [cooldown]);
 
   async function finish() {
-    // A new token without the "must change" flag.
-    const client = await getAuthClient();
-    await client.auth.refreshSession();
+    // End current session so the user must authenticate with their newly set password
+    try {
+      const client = await getAuthClient();
+      await client.auth.signOut();
+    } catch {
+      // ignore
+    }
     setStep("done");
-    setMessage("Your password has been changed.");
-    if (firstTime) setTimeout(() => window.location.assign("/"), 1200);
+    setMessage("Your password has been changed successfully. Redirecting to login…");
+    const target = email ? `/login?reset=success&email=${encodeURIComponent(email)}` : "/login?reset=success";
+    setTimeout(() => {
+      window.location.assign(target);
+    }, 1500);
   }
 
   async function sendCode() {
@@ -160,14 +167,22 @@ export function ChangePasswordRoute() {
           )}
 
           {step === "done" ? (
-            <div className="text-center py-4 space-y-3">
-              <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto animate-bounce" />
-              <p className="text-sm font-bold text-slate-800">Password successfully updated!</p>
+            <div className="text-center py-4 space-y-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto ring-8 ring-emerald-50/50">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-800">Password successfully updated!</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Your session has ended. Redirecting you to sign in with your new credentials…
+                </p>
+              </div>
               <a
-                href="/"
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors"
+                href={email ? `/login?reset=success&email=${encodeURIComponent(email)}` : "/login?reset=success"}
+                className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors"
               >
-                Go to Command Center
+                <span>Proceed to Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </a>
             </div>
           ) : step === "start" ? (
@@ -227,7 +242,7 @@ export function ChangePasswordRoute() {
             </form>
           )}
 
-          {!firstTime && (
+          {!firstTime && step !== "done" && (
             <div className="pt-3 border-t border-slate-100 text-center">
               <a
                 href="/"
