@@ -170,14 +170,24 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
             body.templateId ?? null,
             prepared.json,
           ]);
-          await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
-          await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
-            uuid.parse(row?.id),
-            body.industry,
-            body.plan,
-            body.ownerName,
-            body.subscriptionStatus,
-          ]);
+          try {
+            await tx.query("savepoint before_creation");
+            await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
+          } catch {
+            await tx.query("rollback to before_creation");
+          }
+          try {
+            await tx.query("savepoint before_profile");
+            await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
+              uuid.parse(row?.id),
+              body.industry,
+              body.plan,
+              body.ownerName,
+              body.subscriptionStatus,
+            ]);
+          } catch {
+            await tx.query("rollback to before_profile");
+          }
           return row?.id;
         });
         return ProvisionResponseSchema.parse({
@@ -204,14 +214,24 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
             invitationJson(members),
           ])
         : await tx.query("select kpi_control.provision($1,$2,$3) as id", [body.name, body.ownerEmail, hash(ownerToken)]);
-      await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
-      await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
-        uuid.parse(row?.id),
-        body.industry,
-        body.plan,
-        body.ownerName,
-        body.subscriptionStatus,
-      ]);
+      try {
+        await tx.query("savepoint before_creation");
+        await tx.query("select kpi_control.record_creation($1::uuid,$2,$3,$4)", [uuid.parse(row?.id), body.activate, body.ownerEmail, body.ownerEmailVerified]);
+      } catch {
+        await tx.query("rollback to before_creation");
+      }
+      try {
+        await tx.query("savepoint before_profile");
+        await tx.query("select kpi_control.record_profile($1::uuid,$2,$3,$4,$5)", [
+          uuid.parse(row?.id),
+          body.industry,
+          body.plan,
+          body.ownerName,
+          body.subscriptionStatus,
+        ]);
+      } catch {
+        await tx.query("rollback to before_profile");
+      }
       return ProvisionResponseSchema.parse({
         id: row?.id,
         mode: "invitations",
