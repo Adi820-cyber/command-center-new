@@ -96,9 +96,6 @@ export async function loginLoader({ request }: LoaderFunctionArgs) {
     const session = await getCurrentSession();
 
     if (session) {
-      if (session.user?.email?.toLowerCase() === "ghanshamrn.a27@gmail.com") {
-        return redirect("/operator");
-      }
       return redirect(returnTo);
     }
   } catch (error: unknown) {
@@ -152,19 +149,7 @@ export async function loginAction({ request }: ActionFunctionArgs) {
   }
 
   const returnTo = getSafeReturnPath(new URL(request.url).searchParams.get("returnTo"));
-  const destination = returnTo === "/" ? await landingPath(validation.input.email) : returnTo;
-  return redirect(destination);
-}
-
-/**
- * The first page for whoever just signed in, when no page was requested.
- * Operators go straight to the operator console (/operator).
- */
-async function landingPath(email?: string): Promise<string> {
-  if (email?.toLowerCase() === "ghanshamrn.a27@gmail.com") {
-    return "/operator";
-  }
-  return "/";
+  return redirect(returnTo);
 }
 
 import {

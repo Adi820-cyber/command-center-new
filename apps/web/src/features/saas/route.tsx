@@ -31,6 +31,7 @@ import { KpiActions } from "./kpi-actions";
 import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
 import { initialOf, roleLabel, viewingAs } from "./identity";
+import { SaaSOrganizationsManager } from "../operator/saas-orgs-manager";
 import "./v2.css";
 type Tab =
   | "Dashboard"
@@ -39,7 +40,8 @@ type Tab =
   | "KPI library"
   | "Actions"
   | "Organization"
-  | "Activity";
+  | "Activity"
+  | "SaaS Orgs";
 const tabs: Tab[] = [
   "Dashboard",
   "Ask",
@@ -86,6 +88,7 @@ export function SaasRoute() {
   const [askSeed, setAskSeed] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [isOperator, setIsOperator] = useState(false);
   const reload = useCallback(async () => {
     if (!tenant) return;
     const current = generation.current;
@@ -102,30 +105,52 @@ export function SaasRoute() {
   }, []);
   useEffect(() => {
     let active = true;
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialTenant = urlParams.get("tenant");
+    const initialTab = urlParams.get("tab");
+
     // A temporary password must be replaced before anything else happens.
     void getCurrentSession().then((session) => {
       if (!active) return;
       const userEmail = session?.user.email ?? "";
       setEmail(userEmail);
-      if (userEmail.toLowerCase() === "ghanshamrn.a27@gmail.com") {
-        window.location.replace("/operator");
-        return;
-      }
       if (mustChangePassword(session?.user)) window.location.replace("/change-password");
     });
+
+    // Check if current user is a SaaS Platform Operator
+    request("/api/control/me", MutationResponseSchema)
+      .then(() => {
+        if (!active) return;
+        setIsOperator(true);
+        if (initialTab === "saas" || initialTab === "saas-orgs") {
+          setTab("SaaS Orgs");
+        }
+      })
+      .catch(() => {
+        // Not a platform operator
+      });
+
     request("/api/saas/organizations", TenantListSchema)
       .then((rows) => {
         if (!active) return;
         setOrganizations(rows);
-        selectTenant((rows.find((r) => r.status === "active") ?? rows[0])?.id ?? "");
-        if (rows.length === 0) {
-          // A platform operator belongs to no organization. Send them to the
-          // console instead of an empty customer dashboard.
+        if (initialTenant && rows.some((r) => r.id === initialTenant)) {
+          selectTenant(initialTenant);
+        } else if (rows.length > 0) {
+          selectTenant((rows.find((r) => r.status === "active") ?? rows[0])?.id ?? "");
+        } else {
+          // If no customer tenant memberships exist, check if operator and default to SaaS Orgs
           request("/api/control/me", MutationResponseSchema)
             .then(() => {
-              if (active) window.location.replace("/operator");
+              if (active) {
+                setIsOperator(true);
+                setTab("SaaS Orgs");
+                setLoading(false);
+              }
             })
-            .catch(() => undefined);
+            .catch(() => {
+              if (active) setLoading(false);
+            });
         }
       })
       .catch((e) => {
@@ -184,13 +209,7 @@ export function SaasRoute() {
       if (current === generation.current) setBusy(false);
     }
   }
-  if (email.toLowerCase() === "ghanshamrn.a27@gmail.com") {
-    return (
-      <main className="saas-console">
-        <p className="muted">Opening Operator Console…</p>
-      </main>
-    );
-  }
+
   return (
     <div className="saas-shell">
       <aside className="saas-sidebar">
@@ -203,10 +222,22 @@ export function SaasRoute() {
         <Field title="Organization">
           <select
             aria-label="Organization"
-            value={tenant}
+            value={tab === "SaaS Orgs" ? "__operator_hub__" : tenant}
             disabled={busy}
-            onChange={(e) => selectTenant(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value === "__operator_hub__") {
+                setTab("SaaS Orgs");
+              } else {
+                selectTenant(e.target.value);
+                if (tab === "SaaS Orgs") setTab("Dashboard");
+              }
+            }}
           >
+            {isOperator && (
+              <option value="__operator_hub__">
+                ◈ SaaS Platform (All Orgs)
+              </option>
+            )}
             <option value="" disabled>
               Select workspace
             </option>
@@ -219,6 +250,23 @@ export function SaasRoute() {
           </select>
         </Field>
         <nav aria-label="Workspace">
+          {isOperator && (
+            <button
+              className={tab === "SaaS Orgs" ? "selected" : ""}
+              aria-current={tab === "SaaS Orgs" ? "page" : undefined}
+              onClick={() => setTab("SaaS Orgs")}
+              style={{
+                background: tab === "SaaS Orgs" ? "#eff6ff" : "rgba(37, 99, 235, 0.05)",
+                borderLeft: tab === "SaaS Orgs" ? "3px solid #2563eb" : "3px solid transparent",
+                fontWeight: 700,
+                color: tab === "SaaS Orgs" ? "#1d4ed8" : "#2563eb",
+                marginBottom: 6,
+              }}
+            >
+              <span aria-hidden="true">◈</span>
+              SaaS All Organizations
+            </button>
+          )}
           {tabs.map((item, i) => (
             <button
               key={item}
@@ -255,67 +303,100 @@ export function SaasRoute() {
       <div className="saas-main">
         <header className="saas-topbar">
           <span>
-            {workspace?.organization.name ?? "Your organization"}{" "}
-            <span className="muted"> / {tab}</span>
+            {tab === "SaaS Orgs"
+              ? "SaaS Platform Management"
+              : (workspace?.organization.name ?? "Your organization")}{" "}
+            <span className="muted"> / {tab === "SaaS Orgs" ? "All Organizations" : tab}</span>
           </span>
           <span className="saas-badge">
-            {workspace?.organization.owner
-              ? "Organization owner"
-              : "Member workspace"}
+            {tab === "SaaS Orgs"
+              ? "Platform Provider (Super Admin)"
+              : workspace?.organization.owner
+                ? "Organization owner"
+                : "Member workspace"}
           </span>
         </header>
         <main>
           <div className="saas-page-heading">
             <div>
-              <p className="eyebrow">MEASURE · UNDERSTAND · ACT</p>
-              <h1>{tab}</h1>
+              <p className="eyebrow">
+                {tab === "SaaS Orgs" ? "PLATFORM TELEMETRY · TENANTS · OPERATIONS" : "MEASURE · UNDERSTAND · ACT"}
+              </p>
+              <h1>{tab === "SaaS Orgs" ? "All Organizations (SaaS)" : tab}</h1>
               <p className="muted">
                 {description(tab)}
                 {tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
               </p>
             </div>
-            <button
-              className="secondary"
-              onClick={() => setTab("Data & approvals")}
-            >
-              ＋ Submit data
-            </button>
+            {tab !== "SaaS Orgs" && (
+              <button
+                className="secondary"
+                onClick={() => setTab("Data & approvals")}
+              >
+                ＋ Submit data
+              </button>
+            )}
           </div>
           {message && <output className="saas-message">{message}</output>}
-          {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
-          {!loading && !tenant && (
-            <Empty>
-              <h2>Your workspace starts with an invitation</h2>
-              <p>
-                Ask your organization owner for an invitation. Platform
-                operators can provision an empty organization.
-              </p>
-              <a href="/operator">Open platform setup</a>
-            </Empty>
-          )}
-          {closed && (
-            <Empty>
-              <div className="status-panel">
-                <p className="eyebrow">{closed.name.toUpperCase()}</p>
-                <h2>
-                  {closed.status === "pending"
-                    ? "Your organization is waiting to be activated"
-                    : closed.status === "suspended"
-                      ? "Your organization is suspended"
-                      : "This organization has been removed"}
-                </h2>
-                <p>
-                  {closed.status === "pending"
-                    ? "Your service provider is setting it up. You will be able to sign in and work as soon as they activate it."
-                    : closed.status === "suspended"
-                      ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
-                      : "It is no longer available. Contact your service provider if you think this is a mistake."}
-                </p>
-                <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
-                  Sign out
-                </button>
-              </div>
-            </Empty>
+          {tab === "SaaS Orgs" ? (
+            <SaaSOrganizationsManager
+              onSelectWorkspace={(id) => {
+                selectTenant(id);
+                setTab("Dashboard");
+              }}
+              currentTenantId={tenant}
+            />
+          ) : (
+            <>
+              {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
+              {!loading && !tenant && (
+                <Empty>
+                  <h2>Your workspace starts with an invitation</h2>
+                  <p>
+                    Ask your organization owner for an invitation. Platform
+                    operators can provision an empty organization.
+                  </p>
+                  {isOperator ? (
+                    <button type="button" onClick={() => setTab("SaaS Orgs")}>
+                      Open SaaS Organizations Hub
+                    </button>
+                  ) : (
+                    <a href="/login">Sign in with an authorized account</a>
+                  )}
+                </Empty>
+              )}
+              {closed && (
+                <Empty>
+                  <div className="status-panel">
+                    <p className="eyebrow">{closed.name.toUpperCase()}</p>
+                    <h2>
+                      {closed.status === "pending"
+                        ? "Your organization is waiting to be activated"
+                        : closed.status === "suspended"
+                          ? "Your organization is suspended"
+                          : "This organization has been removed"}
+                    </h2>
+                    <p>
+                      {closed.status === "pending"
+                        ? "Your service provider is setting it up. You will be able to sign in and work as soon as they activate it."
+                        : closed.status === "suspended"
+                          ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
+                          : "It is no longer available. Contact your service provider if you think this is a mistake."}
+                    </p>
+                    {isOperator && (
+                      <div style={{ marginTop: 14 }}>
+                        <button type="button" onClick={() => setTab("SaaS Orgs")}>
+                          Manage in SaaS Organizations Hub
+                        </button>
+                      </div>
+                    )}
+                    <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
+                      Sign out
+                    </button>
+                  </div>
+                </Empty>
+              )}
+            </>
           )}
           {workspace && !closed && (
             <fieldset disabled={busy} className="saas-content" key={tenant}>
@@ -371,7 +452,7 @@ export function SaasRoute() {
           </footer>
         </main>
       </div>
-      {workspace && tab !== "Ask" && (
+      {workspace && tab !== "Ask" && tab !== "SaaS Orgs" && (
         <>
           <button
             type="button"
@@ -403,6 +484,7 @@ function description(tab: Tab) {
     Actions: "Turn an observation into an accountable next step.",
     Organization: "Run your organization: its details, roles and the KPIs each one sees, people and units.",
     Activity: "An auditable record of changes in your workspace.",
+    "SaaS Orgs": "Manage all client organizations subscribed to your SaaS platform. Stop/suspend access, activate new clients, and monitor onboarding.",
   }[tab];
 }
 type Props = {
