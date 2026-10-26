@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   InviteMembersResponseSchema,
+  RequestRoleOtpResponseSchema,
   ResetPasswordResponseSchema,
   roleDraftFromGrants,
   TemplateListSchema,
@@ -430,7 +431,7 @@ function Roles({
           <button type="button" onClick={() => edit()}>+ New role</button>
         </div>
       </section>
-      {editing && !editing.roleId && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} />}
+      {editing && !editing.roleId && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} tenant={tenant} />}
       <div className="role-list">
         {w.roles.map((role) => {
           const draft = roleDraftFromGrants(role.grants);
@@ -777,7 +778,7 @@ function Roles({
                 )}
               </div>
 
-              {isOpen && editing && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} />}
+              {isOpen && editing && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} tenant={tenant} />}
             </section>
           );
         })}
@@ -793,15 +794,30 @@ function RoleEditor({
   value,
   onChange,
   onClose,
+  tenant,
 }: {
   w: SaasWorkspace;
   change: Change;
   value: Editing;
   onChange: (v: Editing) => void;
   onClose: () => void;
+  tenant: string;
 }) {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // OTP Validation State for Role Creation
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSentTo, setOtpSentTo] = useState("");
+  const [otpDebugCode, setOtpDebugCode] = useState<string | undefined>();
+  const [otpError, setOtpError] = useState("");
+  const [otpRequesting, setOtpRequesting] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(600);
+  const [cooldown, setCooldown] = useState(0);
+  const [successMessage, setSuccessMessage] = useState("");
+
   const active = useMemo(() => w.kpis.filter((k) => k.state === "active"), [w.kpis]);
   const groups = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -819,7 +835,92 @@ function RoleEditor({
   const usesScope = value.capabilities.some((c) => c !== "configure");
   const chosen = new Set(value.kpiIds);
 
-  async function save() {
+  // Timer countdowns
+  useEffect(() => {
+    if (!otpModalOpen) return undefined;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [otpModalOpen]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = setInterval(() => {
+      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [cooldown]);
+
+  async function requestRoleOtp() {
+    setOtpRequesting(true);
+    setOtpError("");
+    try {
+      const res = await request(
+        `/api/saas/${tenant}/roles/request-otp`,
+        RequestRoleOtpResponseSchema,
+        { roleName: value.name.trim() }
+      );
+      setOtpSentTo(res.sentTo);
+      setOtpDebugCode(res.debugCode);
+      setSecondsLeft(res.expiresInMinutes * 60);
+      setCooldown(30);
+      return true;
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : "Unable to generate verification code.");
+      return false;
+    } finally {
+      setOtpRequesting(false);
+    }
+  }
+
+  async function handleStartSave() {
+    if (problem) return;
+    // When creating a new role (or saving as owner), prompt for OTP verification!
+    setOtpModalOpen(true);
+    setOtpCode("");
+    setOtpError("");
+    setSuccessMessage("");
+    await requestRoleOtp();
+  }
+
+  async function handleVerifyAndCreateRole() {
+    if (otpCode.trim().length !== 6) {
+      setOtpError("Please enter the complete 6-digit OTP code.");
+      return;
+    }
+    setOtpVerifying(true);
+    setOtpError("");
+    try {
+      const ok = await change("/roles/save", {
+        ...(value.roleId ? { roleId: value.roleId } : {}),
+        name: value.name.trim(),
+        capabilities: value.capabilities,
+        scopeUnitId: usesScope ? value.scopeUnitId : null,
+        kpiIds: usesKpis && !value.allKpis ? value.kpiIds : [],
+        otpCode: otpCode.trim(),
+      });
+      if (ok) {
+        setSuccessMessage(`✓ Role "${value.name.trim()}" authorized and created successfully!`);
+        setTimeout(() => {
+          setOtpModalOpen(false);
+          onClose();
+        }, 900);
+      } else {
+        setOtpError("Verification code was rejected. Please check the code and try again.");
+      }
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : "Failed to verify OTP.");
+    } finally {
+      setOtpVerifying(false);
+    }
+  }
+
+  async function directSaveWithoutOtp() {
     setBusy(true);
     const ok = await change("/roles/save", {
       ...(value.roleId ? { roleId: value.roleId } : {}),
@@ -937,11 +1038,120 @@ function RoleEditor({
 
       {problem && <p className="muted">{problem}</p>}
       <div className="csv-actions">
-        <button type="button" disabled={busy || !!problem} onClick={() => void save()}>
-          {busy ? "Saving…" : value.roleId ? "Save role" : "Create role"}
+        <button
+          type="button"
+          disabled={busy || otpRequesting || !!problem}
+          onClick={() => {
+            if (!value.roleId) {
+              void handleStartSave();
+            } else {
+              void directSaveWithoutOtp();
+            }
+          }}
+        >
+          {busy || otpRequesting ? "Initializing…" : value.roleId ? "Save role" : "🔐 Create role with OTP"}
         </button>
         <button type="button" className="secondary" onClick={onClose}>Cancel</button>
       </div>
+
+      {/* Role Creation OTP Validation Modal */}
+      {otpModalOpen && (
+        <div className="role-otp-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setOtpModalOpen(false); }}>
+          <dialog open className="role-otp-modal" aria-labelledby="role-otp-modal-title">
+            <div className="role-otp-header">
+              <div className="role-otp-shield" aria-hidden="true">🛡️</div>
+              <div className="role-otp-title-group">
+                <h3 id="role-otp-modal-title">Authorize Role Creation</h3>
+                <p>An owner security code is required to create <strong>&ldquo;{value.name.trim()}&rdquo;</strong>.</p>
+              </div>
+            </div>
+
+            <div className="role-otp-notice">
+              <span>✉️</span>
+              <span>
+                A 6-digit one-time password (OTP) was issued to: <strong>{otpSentTo || "registered organization owner"}</strong>.
+              </span>
+            </div>
+
+            {otpDebugCode && (
+              <div className="role-otp-demo-badge">
+                <span>🧪 Demo Code: <code>{otpDebugCode}</code></span>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ padding: "3px 8px", fontSize: 11 }}
+                  onClick={() => setOtpCode(otpDebugCode)}
+                >
+                  Use code
+                </button>
+              </div>
+            )}
+
+            <div className="role-otp-input-box">
+              <label htmlFor="role-otp-field" style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>
+                Enter 6-Digit Verification Code
+              </label>
+              <input
+                id="role-otp-field"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoFocus
+                className="role-otp-input"
+                value={otpCode}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/\D/g, "");
+                  setOtpCode(clean);
+                  if (clean.length === 6) setOtpError("");
+                }}
+                placeholder="······"
+              />
+              <div className={`role-otp-timer ${secondsLeft < 120 ? "expiring" : ""}`}>
+                ⏱️ Code valid for {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
+              </div>
+            </div>
+
+            {otpError && (
+              <p role="alert" className="errors" style={{ textAlign: "center", margin: 0 }}>
+                {otpError}
+              </p>
+            )}
+
+            {successMessage && (
+              <div style={{ background: "#f0fdf4", color: "#166534", padding: "10px", borderRadius: 8, textAlign: "center", fontWeight: 600, fontSize: 13 }}>
+                {successMessage}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={cooldown > 0 || otpRequesting}
+                onClick={() => void requestRoleOtp()}
+                style={{ fontSize: 12, padding: "6px 10px" }}
+              >
+                {otpRequesting ? "Sending…" : cooldown > 0 ? `Resend in ${cooldown}s` : "↻ Resend code"}
+              </button>
+              <div className="role-otp-actions" style={{ margin: 0 }}>
+                <button type="button" className="secondary" onClick={() => setOtpModalOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={otpCode.length !== 6 || otpVerifying || !!successMessage}
+                  onClick={() => void handleVerifyAndCreateRole()}
+                  style={{ minWidth: 160 }}
+                >
+                  {otpVerifying ? "Verifying OTP…" : "Verify & Create"}
+                </button>
+              </div>
+            </div>
+          </dialog>
+        </div>
+      )}
     </div>
   );
 }

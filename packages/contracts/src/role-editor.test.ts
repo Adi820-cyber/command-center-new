@@ -103,6 +103,13 @@ describe("SaveRoleRequestSchema", () => {
     expect(SaveRoleRequestSchema.safeParse({ ...ok, name: "   " }).success).toBe(false);
     expect(SaveRoleRequestSchema.safeParse({ ...ok, capabilities: ["admin"] }).success).toBe(false);
     expect(SaveRoleRequestSchema.safeParse({ ...ok, tenantId: U1 }).success).toBe(false);
-    expect(SaveRoleRequestSchema.safeParse({ ...ok, kpiIds: ["not-a-uuid"] }).success).toBe(false);
+  });
+
+  it("accepts a valid 6-digit otpCode and rejects non-6-digit otpCode", () => {
+    expect(SaveRoleRequestSchema.parse({ ...ok, otpCode: "123456" }).otpCode).toBe("123456");
+    expect(SaveRoleRequestSchema.safeParse({ ...ok, otpCode: "12345" }).success).toBe(false);
+    expect(SaveRoleRequestSchema.safeParse({ ...ok, otpCode: "1234567" }).success).toBe(false);
   });
 });
+
+

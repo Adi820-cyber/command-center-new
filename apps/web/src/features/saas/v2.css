@@ -1242,3 +1242,140 @@ fieldset.csv-choices {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* ---- Role Creation OTP Validation Modal ---- */
+.role-otp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.role-otp-modal {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: otpModalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes otpModalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.role-otp-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.role-otp-shield {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.role-otp-title-group h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.role-otp-title-group p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+}
+.role-otp-notice {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.role-otp-input-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.role-otp-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3em !important;
+  text-align: center !important;
+  width: 220px !important;
+  padding: 10px 14px !important;
+  border: 2px solid #cbd5e1 !important;
+  border-radius: 10px !important;
+  transition: all 0.2s ease;
+}
+.role-otp-input:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+  outline: none !important;
+}
+.role-otp-timer {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.role-otp-timer.expiring {
+  color: #ef4444;
+  font-weight: 600;
+}
+.role-otp-demo-badge {
+  background: #f0fdf4;
+  border: 1px dashed #86efac;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #166534;
+}
+.role-otp-demo-badge code {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 14px;
+  background: #dcfce7;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.role-otp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+

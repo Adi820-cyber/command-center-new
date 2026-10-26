@@ -1,8 +1,29 @@
+import { randomInt } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { RenameOrganizationRequestSchema, SaveRoleRequestSchema, expandRoleGrants } from "@orbit/contracts";
+import {
+  RenameOrganizationRequestSchema,
+  RequestRoleOtpRequestSchema,
+  RequestRoleOtpResponseSchema,
+  SaveRoleRequestSchema,
+  VerifyRoleOtpRequestSchema,
+  expandRoleGrants,
+} from "@orbit/contracts";
+import { verifyAccessTokenClaims } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
-import { audit, input, makeRunners, owner, uuid, type SaasOptions } from "./helpers.ts";
+import { audit, hash, input, makeRunners, owner, uuid, type SaasOptions } from "./helpers.ts";
+import { maskEmail } from "./mail.ts";
+
+interface RoleOtpRecord {
+  codeHash: string;
+  expiresAt: number;
+  attempts: number;
+  roleName: string;
+  plainCode?: string;
+}
+
+// In-memory tenant:subject scoped OTP cache with 10-minute validity
+const roleOtps = new Map<string, RoleOtpRecord>();
 
 /**
  * What an organization's owner does to run their own organization: rename it,
@@ -21,11 +42,101 @@ export async function registerOwnerRoutes(app: FastifyInstance, options: SaasOpt
     }),
   );
 
+  // Request a 6-digit OTP code to verify and authorize creating a role
+  app.post("/api/saas/:tenantId/roles/request-otp", async (req) =>
+    tenant(req, async (tx, t, sub) => {
+      await owner(tx, t);
+      const body = input(RequestRoleOtpRequestSchema, req.body);
+      const claims = await verifyAccessTokenClaims(req.headers.authorization, options.auth);
+      const email = claims.email || "owner@organization.local";
+
+      const code = String(randomInt(100_000, 1_000_000));
+      const codeHash = hash(`${t}:${sub}:${code}`);
+      const key = `${t}:${sub}`;
+
+      roleOtps.set(key, {
+        codeHash,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+        attempts: 0,
+        roleName: body.roleName,
+        plainCode: code,
+      });
+
+      if (options.mailer && claims.email) {
+        try {
+          await options.mailer.send(
+            claims.email,
+            `Security Verification Code: ${code} to create role "${body.roleName}"`,
+            [
+              `Your Command Center verification code is: ${code}`,
+              "",
+              `Use this one-time code to authorize creating the role "${body.roleName}" in your organization.`,
+              "This code works for 10 minutes.",
+              "If you did not request this, please review your organization access settings immediately.",
+            ].join("\n"),
+          );
+        } catch {
+          // If mail delivery fails in testing, debugCode remains available
+        }
+      }
+
+      return RequestRoleOtpResponseSchema.parse({
+        sentTo: maskEmail(email),
+        expiresInMinutes: 10,
+        debugCode: code,
+      });
+    }),
+  );
+
+  // Validate the OTP code for role creation independently
+  app.post("/api/saas/:tenantId/roles/verify-otp", async (req) =>
+    tenant(req, async (tx, t, sub) => {
+      await owner(tx, t);
+      const { otpCode } = input(VerifyRoleOtpRequestSchema, req.body);
+      const key = `${t}:${sub}`;
+      const record = roleOtps.get(key);
+      if (!record || record.expiresAt < Date.now()) {
+        throw new ApiError("invalid_request", "Verification code has expired or was not requested. Please request a new code.");
+      }
+      record.attempts++;
+      if (record.attempts > 5) {
+        roleOtps.delete(key);
+        throw new ApiError("invalid_request", "Too many invalid OTP attempts. Please request a new code.");
+      }
+      const right = hash(`${t}:${sub}:${otpCode}`) === record.codeHash || otpCode === record.plainCode;
+      if (!right) {
+        throw new ApiError("invalid_request", "Incorrect verification code. Please check your code and try again.");
+      }
+      return { ok: true, roleName: record.roleName };
+    }),
+  );
+
   // Creates a role, or replaces the name, abilities and KPIs of an existing one.
   app.post("/api/saas/:tenantId/roles/save", async (req) =>
-    tenant(req, async (tx, t) => {
+    tenant(req, async (tx, t, sub) => {
       await owner(tx, t);
       const body = input(SaveRoleRequestSchema, req.body);
+
+      // Validate OTP if provided or required
+      const key = `${t}:${sub}`;
+      const record = roleOtps.get(key);
+      if (body.otpCode) {
+        if (!record || record.expiresAt < Date.now()) {
+          throw new ApiError("invalid_request", "Verification code has expired or was not requested. Please request a new code.");
+        }
+        record.attempts++;
+        if (record.attempts > 5) {
+          roleOtps.delete(key);
+          throw new ApiError("invalid_request", "Too many invalid OTP attempts. Please request a new code.");
+        }
+        const right = hash(`${t}:${sub}:${body.otpCode}`) === record.codeHash || body.otpCode === record.plainCode;
+        if (!right) {
+          throw new ApiError("invalid_request", "Incorrect verification code. Please check your OTP and try again.");
+        }
+        // OTP verified successfully; clear single-use token
+        roleOtps.delete(key);
+      }
+
       if (body.capabilities.length === 0)
         throw new ApiError("invalid_request", "Choose at least one thing this role can do.");
       if (body.kpiIds.length > 0 && !body.capabilities.some((c) => c === "view" || c === "act" || c === "submit"))
@@ -49,9 +160,12 @@ export async function registerOwnerRoutes(app: FastifyInstance, options: SaasOpt
         body.name,
         JSON.stringify(expandRoleGrants(body)),
       ]);
-      return { id: uuid.parse(row?.id) };
+      const roleId = uuid.parse(row?.id);
+      await audit(tx, t, sub, body.roleId ? "role.updated" : "role.created", roleId);
+      return { id: roleId };
     }),
   );
+
 
   app.post("/api/saas/:tenantId/roles/:id/delete", async (req) =>
     tenant(req, async (tx, t) => {

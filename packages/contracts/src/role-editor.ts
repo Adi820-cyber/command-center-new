@@ -19,8 +19,28 @@ export const SaveRoleRequestSchema = z.strictObject({
   scopeUnitId: z.uuid().nullable(),
   /** KPIs for view, act and submit. Empty means every KPI in scope. */
   kpiIds: z.array(z.uuid()).max(1000),
+  /** 6-digit OTP code to authorize role creation or modification */
+  otpCode: z.string().trim().length(6).optional(),
 });
 export type SaveRoleRequest = z.infer<typeof SaveRoleRequestSchema>;
+
+export const RequestRoleOtpRequestSchema = z.strictObject({
+  roleName: z.string().trim().min(1).max(120),
+});
+export type RequestRoleOtpRequest = z.infer<typeof RequestRoleOtpRequestSchema>;
+
+export const RequestRoleOtpResponseSchema = z.strictObject({
+  sentTo: z.string(),
+  expiresInMinutes: z.number(),
+  debugCode: z.string().optional(),
+});
+export type RequestRoleOtpResponse = z.infer<typeof RequestRoleOtpResponseSchema>;
+
+export const VerifyRoleOtpRequestSchema = z.strictObject({
+  otpCode: z.string().trim().length(6),
+});
+export type VerifyRoleOtpRequest = z.infer<typeof VerifyRoleOtpRequestSchema>;
+
 
 export const RenameOrganizationRequestSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),
