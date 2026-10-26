@@ -1233,6 +1233,7 @@ export function createFixtureApi(options: FixtureApiOptions = {}) {
         });
       }
     }
+    return emptyAnswer("out_of_scope", OUT_OF_SCOPE_ANSWER, period);
   }
 
   function guidedPrompts(): GuidedPrompt[] {

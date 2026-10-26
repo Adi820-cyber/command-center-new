@@ -670,7 +670,17 @@ export function CoveragePanel({ coverage }: { coverage: Coverage }) {
         <input type="hidden" name="intent" value="coverage" />
         {coverage.version === null ? null : <input type="hidden" name="version" value={coverage.version} />}
         <Field label="Payer">
-          <select className="orbit-select" name="payerType" value={payerType} onChange={(event) => setPayerType(event.target.value as Coverage["payerType"])}>
+          <select
+            className="orbit-select"
+            name="payerType"
+            value={payerType}
+            onChange={(event) => {
+              const val = event.target.value;
+              if (val === "government" || val === "private" || val === "self-pay") {
+                setPayerType(val);
+              }
+            }}
+          >
             <option value="self-pay">Self-pay</option>
             <option value="government">Government scheme</option>
             <option value="private">Private insurer</option>

@@ -43,4 +43,12 @@ describe("operator assistant", () => {
     expect(answer.answer).toContain("no access");
     expect(answer.facts).toContainEqual({ label: "Users", value: "4", tone: "neutral" });
   });
+
+  it("calculates platform MRR and ARR for the operator", () => {
+    const answer = answerOperatorQuestion("Give me a platform revenue summary", organizations);
+    expect(answer.topic).toBe("platform_revenues");
+    expect(answer.facts).toContainEqual({ label: "Total MRR", value: "$199", tone: "good" });
+    expect(answer.facts).toContainEqual({ label: "Annualized Run Rate (ARR)", value: "$2,388", tone: "good" });
+    expect(answer.facts).toContainEqual({ label: "Active Organizations", value: "1", tone: "good" });
+  });
 });

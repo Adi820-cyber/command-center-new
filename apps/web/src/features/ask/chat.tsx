@@ -52,6 +52,8 @@ function compactTarget(target: Target, unit: string) {
       return `${target.direction === "higher_is_better" ? "≥" : "≤"} ${withUnit(target.value, unit)}`;
     case "configured_range":
       return `${formatNumber(target.low)}–${withUnit(target.high, unit)}`;
+    default:
+      return "No target";
   }
 }
 

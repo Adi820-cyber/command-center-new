@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ControlOrganizationListSchema,
   MutationResponseSchema,
   ResultSchema,
   type SaasResult,
@@ -32,6 +33,7 @@ import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
 import { initialOf, roleLabel, viewingAs } from "./identity";
 import { SaaSOrganizationsManager } from "../operator/saas-orgs-manager";
+import { SaaSRevenueDashboard, type ControlOrg } from "../operator/saas-revenue-dashboard";
 import "./v2.css";
 type Tab =
   | "Dashboard"
@@ -42,14 +44,22 @@ type Tab =
   | "Organization"
   | "Activity"
   | "SaaS Orgs";
-const tabs: Tab[] = [
-  "Dashboard",
-  "Ask",
-  "Data & approvals",
-  "KPI library",
-  "Actions",
-  "Organization",
-  "Activity",
+
+const OPERATOR_TABS: { tab: Tab; label: string; icon: string }[] = [
+  { tab: "Dashboard", label: "Platform Revenues & KPIs", icon: "◫" },
+  { tab: "SaaS Orgs", label: "SaaS All Organizations", icon: "◈" },
+  { tab: "Ask", label: "Platform AI Assistant", icon: "✦" },
+  { tab: "Activity", label: "Platform Activity & Audit", icon: "◷" },
+];
+
+const CUSTOMER_TABS: { tab: Tab; label: string; icon: string }[] = [
+  { tab: "Dashboard", label: "Dashboard", icon: "◫" },
+  { tab: "Ask", label: "Ask", icon: "✦" },
+  { tab: "Data & approvals", label: "Data & approvals", icon: "⇅" },
+  { tab: "KPI library", label: "KPI library", icon: "◇" },
+  { tab: "Actions", label: "Actions", icon: "☑" },
+  { tab: "Organization", label: "Organization", icon: "◎" },
+  { tab: "Activity", label: "Activity", icon: "◷" },
 ];
 const text = (data: FormData, key: string) => {
   const value = data.get(key);
@@ -122,8 +132,15 @@ export function SaasRoute() {
       .then(() => {
         if (!active) return;
         setIsOperator(true);
+        setLoading(false);
         if (initialTab === "saas" || initialTab === "saas-orgs") {
           setTab("SaaS Orgs");
+        } else if (initialTab === "ask") {
+          setTab("Ask");
+        } else if (initialTab === "activity") {
+          setTab("Activity");
+        } else {
+          setTab("Dashboard");
         }
       })
       .catch(() => {
@@ -219,75 +236,80 @@ export function SaasRoute() {
             Command Center<small>PERFORMANCE WORKSPACE</small>
           </span>
         </a>
-        <Field title="Organization">
-          <select
-            aria-label="Organization"
-            value={tab === "SaaS Orgs" ? "__operator_hub__" : tenant}
-            disabled={busy}
-            onChange={(e) => {
-              if (e.target.value === "__operator_hub__") {
-                setTab("SaaS Orgs");
-              } else {
+
+        {isOperator ? (
+          <div style={{ padding: "0 0 12px", borderBottom: "1px solid #e2e8f0", marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>
+              Active Scope
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe", color: "#1d4ed8", fontWeight: 700, fontSize: 13 }}>
+              <span>◈</span>
+              <span>SaaS Platform Scope (All Orgs)</span>
+            </div>
+          </div>
+        ) : (
+          <Field title="Organization">
+            <select
+              aria-label="Organization"
+              value={tenant}
+              disabled={busy}
+              onChange={(e) => {
                 selectTenant(e.target.value);
-                if (tab === "SaaS Orgs") setTab("Dashboard");
-              }
-            }}
-          >
-            {isOperator && (
-              <option value="__operator_hub__">
-                ◈ SaaS Platform (All Orgs)
-              </option>
-            )}
-            <option value="" disabled>
-              Select workspace
-            </option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-                {o.status === "active" ? "" : ` (${o.status})`}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <nav aria-label="Workspace">
-          {isOperator && (
-            <button
-              className={tab === "SaaS Orgs" ? "selected" : ""}
-              aria-current={tab === "SaaS Orgs" ? "page" : undefined}
-              onClick={() => setTab("SaaS Orgs")}
-              style={{
-                background: tab === "SaaS Orgs" ? "#eff6ff" : "rgba(37, 99, 235, 0.05)",
-                borderLeft: tab === "SaaS Orgs" ? "3px solid #2563eb" : "3px solid transparent",
-                fontWeight: 700,
-                color: tab === "SaaS Orgs" ? "#1d4ed8" : "#2563eb",
-                marginBottom: 6,
               }}
             >
-              <span aria-hidden="true">◈</span>
-              SaaS All Organizations
-            </button>
-          )}
-          {tabs.map((item, i) => (
-            <button
-              key={item}
-              className={tab === item ? "selected" : ""}
-              aria-current={tab === item ? "page" : undefined}
-              onClick={() => setTab(item)}
-            >
-              <span aria-hidden="true">
-                {["◫", "✦", "⇅", "◇", "☑", "◎", "◷"][i]}
-              </span>
-              {item}
-            </button>
-          ))}
+              <option value="" disabled>
+                Select workspace
+              </option>
+              {organizations.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                  {o.status === "active" ? "" : ` (${o.status})`}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <nav aria-label="Workspace">
+          {isOperator
+            ? OPERATOR_TABS.map(({ tab: item, label, icon }) => (
+                <button
+                  key={item}
+                  className={tab === item ? "selected" : ""}
+                  aria-current={tab === item ? "page" : undefined}
+                  onClick={() => setTab(item)}
+                  style={
+                    item === "Dashboard" || item === "SaaS Orgs"
+                      ? {
+                          fontWeight: tab === item ? 700 : 600,
+                        }
+                      : undefined
+                  }
+                >
+                  <span aria-hidden="true">{icon}</span>
+                  {label}
+                </button>
+              ))
+            : CUSTOMER_TABS.map(({ tab: item, label, icon }) => (
+                <button
+                  key={item}
+                  className={tab === item ? "selected" : ""}
+                  aria-current={tab === item ? "page" : undefined}
+                  onClick={() => setTab(item)}
+                >
+                  <span aria-hidden="true">{icon}</span>
+                  {label}
+                </button>
+              ))}
         </nav>
+
         <div className="saas-sidebar-footer">
           <div className="whoami" aria-label="Signed in as">
             <span className="whoami-avatar" aria-hidden="true">{initialOf(email)}</span>
             <span className="whoami-text">
               <strong title={email}>{email || "Signed in"}</strong>
-              <small>{roleLabel(workspace?.me) || (closed ? closed.status : "")}</small>
-              <small className="whoami-org">{workspace?.organization.name ?? closed?.name ?? ""}</small>
+              <small>{isOperator ? "Platform Operator (Super Admin)" : (roleLabel(workspace?.me) || (closed ? closed.status : ""))}</small>
+              <small className="whoami-org">{isOperator ? "SaaS Platform Provider" : (workspace?.organization.name ?? closed?.name ?? "")}</small>
             </span>
           </div>
           <a href="/change-password">Account security</a>
@@ -300,35 +322,61 @@ export function SaasRoute() {
           </button>
         </div>
       </aside>
+
       <div className="saas-main">
         <header className="saas-topbar">
           <span>
-            {tab === "SaaS Orgs"
+            {isOperator
               ? "SaaS Platform Management"
               : (workspace?.organization.name ?? "Your organization")}{" "}
-            <span className="muted"> / {tab === "SaaS Orgs" ? "All Organizations" : tab}</span>
+            <span className="muted">
+              {" "}
+              /{" "}
+              {tab === "SaaS Orgs"
+                ? "All Organizations"
+                : isOperator && tab === "Dashboard"
+                  ? "Platform Revenues & KPIs"
+                  : isOperator && tab === "Ask"
+                    ? "Platform AI Assistant"
+                    : isOperator && tab === "Activity"
+                      ? "Platform Audit & Activity"
+                      : tab}
+            </span>
           </span>
           <span className="saas-badge">
-            {tab === "SaaS Orgs"
+            {isOperator
               ? "Platform Provider (Super Admin)"
               : workspace?.organization.owner
                 ? "Organization owner"
                 : "Member workspace"}
           </span>
         </header>
+
         <main>
           <div className="saas-page-heading">
             <div>
               <p className="eyebrow">
-                {tab === "SaaS Orgs" ? "PLATFORM TELEMETRY · TENANTS · OPERATIONS" : "MEASURE · UNDERSTAND · ACT"}
+                {isOperator
+                  ? "PLATFORM TELEMETRY · REVENUE & FINANCIAL KPIS · CLIENT MANAGEMENT"
+                  : "MEASURE · UNDERSTAND · ACT"}
               </p>
-              <h1>{tab === "SaaS Orgs" ? "All Organizations (SaaS)" : tab}</h1>
+              <h1>
+                {isOperator
+                  ? tab === "Dashboard"
+                    ? "Platform Revenues & KPIs"
+                    : tab === "SaaS Orgs"
+                      ? "All Organizations (SaaS)"
+                      : tab === "Ask"
+                        ? "Platform AI Assistant"
+                        : "Platform Activity & Audit"
+                  : tab}
+              </h1>
               <p className="muted">
-                {description(tab)}
-                {tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
+                {isOperator ? operatorDescription(tab) : description(tab)}
+                {!isOperator && tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
               </p>
             </div>
-            {tab !== "SaaS Orgs" && (
+            {!isOperator && (
               <button
                 className="secondary"
                 onClick={() => setTab("Data & approvals")}
@@ -338,15 +386,48 @@ export function SaasRoute() {
             )}
           </div>
           {message && <output className="saas-message">{message}</output>}
-          {tab === "SaaS Orgs" ? (
-            <SaaSOrganizationsManager
-              onSelectWorkspace={(id) => {
-                selectTenant(id);
-                setTab("Dashboard");
-              }}
-              currentTenantId={tenant}
-            />
+
+          {/* ── Operator Views ── */}
+          {isOperator ? (
+            <div className="saas-content">
+              {tab === "Dashboard" && (
+                <SaaSRevenueDashboard
+                  onGoToOrgs={() => setTab("SaaS Orgs")}
+                  onAskOperator={(q) => {
+                    setAskSeed(q);
+                    setTab("Ask");
+                  }}
+                />
+              )}
+              {tab === "SaaS Orgs" && (
+                <SaaSOrganizationsManager
+                  onSelectWorkspace={() => {
+                    setTab("Dashboard");
+                  }}
+                  currentTenantId={tenant}
+                  operatorEmail={email}
+                />
+              )}
+              {tab === "Ask" && (
+                <AskPanel
+                  endpoint="/api/control/ask"
+                  seed={askSeed}
+                  onSeedUsed={() => setAskSeed("")}
+                  title="Platform AI Assistant"
+                  note="This platform operator assistant sees onboarding, subscription plans, platform revenues, and headcounts. It cannot access customer internal clinical data."
+                  starters={[
+                    "Give me a platform revenue summary",
+                    "Which owners still need to reset their password?",
+                    "Summarize subscription plans",
+                    "How many organizations were onboarded recently?",
+                    "What data can the operator see?",
+                  ]}
+                />
+              )}
+              {tab === "Activity" && <OperatorActivity />}
+            </div>
           ) : (
+            /* ── Customer / Tenant Views ── */
             <>
               {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
               {!loading && !tenant && (
@@ -356,13 +437,7 @@ export function SaasRoute() {
                     Ask your organization owner for an invitation. Platform
                     operators can provision an empty organization.
                   </p>
-                  {isOperator ? (
-                    <button type="button" onClick={() => setTab("SaaS Orgs")}>
-                      Open SaaS Organizations Hub
-                    </button>
-                  ) : (
-                    <a href="/login">Sign in with an authorized account</a>
-                  )}
+                  <a href="/login">Sign in with an authorized account</a>
                 </Empty>
               )}
               {closed && (
@@ -383,76 +458,72 @@ export function SaasRoute() {
                           ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
                           : "It is no longer available. Contact your service provider if you think this is a mistake."}
                     </p>
-                    {isOperator && (
-                      <div style={{ marginTop: 14 }}>
-                        <button type="button" onClick={() => setTab("SaaS Orgs")}>
-                          Manage in SaaS Organizations Hub
-                        </button>
-                      </div>
-                    )}
                     <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
                       Sign out
                     </button>
                   </div>
                 </Empty>
               )}
+              {workspace && !closed && (
+                <fieldset disabled={busy} className="saas-content" key={tenant}>
+                  {tab === "Dashboard" && (
+                    <Dashboard
+                      workspace={workspace}
+                      change={change}
+                      ask={(q) => {
+                        setAskSeed(q);
+                        setTab("Ask");
+                      }}
+                      goto={setTab}
+                    />
+                  )}
+                  {tab === "Ask" && (
+                    <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
+                  )}
+                  {tab === "KPI library" && (
+                    <Kpis workspace={workspace} change={change} />
+                  )}
+                  {tab === "Data & approvals" && (
+                    <>
+                      <CsvImport workspace={workspace} reload={reload} />
+                      <DataEntry
+                        workspace={workspace}
+                        change={change}
+                        tenant={tenant}
+                      />
+                    </>
+                  )}
+                  {tab === "Organization" &&
+                    (workspace.organization.owner ? (
+                      <OrgHub
+                        workspace={workspace}
+                        change={change}
+                        goto={setTab}
+                        tenant={tenant}
+                        reload={reload}
+                        governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                      />
+                    ) : (
+                      <Organization workspace={workspace} change={change} />
+                    ))}
+                  {tab === "Actions" && (
+                    <Actions workspace={workspace} change={change} />
+                  )}
+                  {tab === "Activity" && <Activity tenant={tenant} />}
+                </fieldset>
+              )}
             </>
           )}
-          {workspace && !closed && (
-            <fieldset disabled={busy} className="saas-content" key={tenant}>
-              {tab === "Dashboard" && (
-                <Dashboard
-                  workspace={workspace}
-                  change={change}
-                  ask={(q) => {
-                    setAskSeed(q);
-                    setTab("Ask");
-                  }}
-                  goto={setTab}
-                />
-              )}
-              {tab === "Ask" && (
-                <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
-              )}
-              {tab === "KPI library" && (
-                <Kpis workspace={workspace} change={change} />
-              )}
-              {tab === "Data & approvals" && (
-                <>
-                  <CsvImport workspace={workspace} reload={reload} />
-                  <DataEntry
-                    workspace={workspace}
-                    change={change}
-                    tenant={tenant}
-                  />
-                </>
-              )}
-              {tab === "Organization" &&
-                (workspace.organization.owner ? (
-                  <OrgHub
-                    workspace={workspace}
-                    change={change}
-                    goto={setTab}
-                    tenant={tenant}
-                    reload={reload}
-                    governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
-                  />
-                ) : (
-                  <Organization workspace={workspace} change={change} />
-                ))}
-              {tab === "Actions" && (
-                <Actions workspace={workspace} change={change} />
-              )}
-              {tab === "Activity" && <Activity tenant={tenant} />}
-            </fieldset>
-          )}
+
           <footer className="saas-footer">
-            Values appear only after approved inputs are calculated. Missing
-            data is never treated as zero.
+            {isOperator
+              ? "Platform revenue and operational metrics are derived from active client subscriptions. Illustrative telemetry."
+              : "Values appear only after approved inputs are calculated. Missing data is never treated as zero."}
           </footer>
         </main>
       </div>
-      {workspace && tab !== "Ask" && tab !== "SaaS Orgs" && (
+
+      {isOperator ? (
         <>
           <button
             type="button"
@@ -461,18 +532,151 @@ export function SaasRoute() {
             aria-controls="workspace-assistant"
             onClick={() => setAssistantOpen((open) => !open)}
           >
-            {assistantOpen ? "Close assistant" : "Ask AI"}
+            {assistantOpen ? "Close assistant" : "Ask Platform AI"}
           </button>
           {assistantOpen && (
-            <aside id="workspace-assistant" className="assistant-drawer" aria-label="Role-scoped data assistant">
-              <AskPanel tenant={tenant} compact />
+            <aside id="workspace-assistant" className="assistant-drawer" aria-label="Platform metadata assistant">
+              <AskPanel
+                endpoint="/api/control/ask"
+                compact
+                title="Platform AI Assistant"
+                note="This platform assistant sees onboarding, subscription plans, platform revenues, and headcounts only. It cannot access customer internal clinical data."
+                starters={[
+                  "Give me a platform revenue summary",
+                  "Which owners still need to reset their password?",
+                  "Summarize subscription plans",
+                  "What data can the operator see?",
+                ]}
+              />
             </aside>
           )}
         </>
+      ) : (
+        workspace && tab !== "Ask" && (
+          <>
+            <button
+              type="button"
+              className="assistant-launcher"
+              aria-expanded={assistantOpen}
+              aria-controls="workspace-assistant"
+              onClick={() => setAssistantOpen((open) => !open)}
+            >
+              {assistantOpen ? "Close assistant" : "Ask AI"}
+            </button>
+            {assistantOpen && (
+              <aside id="workspace-assistant" className="assistant-drawer" aria-label="Role-scoped data assistant">
+                <AskPanel tenant={tenant} compact />
+              </aside>
+            )}
+          </>
+        )
       )}
     </div>
   );
 }
+
+function operatorDescription(tab: Tab) {
+  return {
+    Dashboard: "Platform revenue telemetry, Monthly Recurring Revenue (MRR), ARR, and SaaS platform KPIs.",
+    "SaaS Orgs": "Manage all client organizations subscribed to your SaaS platform: stop/suspend access, activate new clients, and monitor onboarding.",
+    Ask: "Ask platform questions. Answers derive only from platform telemetry, subscriptions, and onboarding metadata.",
+    Activity: "Platform audit log of organization status changes, lifecycle events, and tenant onboarding.",
+    "Data & approvals": "",
+    "KPI library": "",
+    Actions: "",
+    Organization: "",
+  }[tab];
+}
+
+function OperatorActivity() {
+  const [rows, setRows] = useState<ControlOrg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    request("/api/control/organizations", ControlOrganizationListSchema)
+      .then((data) => {
+        if (!active) return;
+        setRows(data);
+        setLoading(false);
+      })
+      .catch((e) => {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : "Failed to load platform operations history.");
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) return <p className="muted">Loading platform operational events…</p>;
+  if (error) return <p role="alert">{error}</p>;
+
+  return (
+    <section className="saas-card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <h2>Platform Operations & Organization Lifecycle Audit</h2>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            Auditable log of organization provisioning, status updates, tier assignments, and security resets.
+          </p>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "4px 10px", borderRadius: 9999 }}>
+          ● {rows.length} Total Client Organizations
+        </span>
+      </div>
+
+      <div className="saas-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Organization</th>
+              <th>Operation / Event</th>
+              <th>Subscription Status</th>
+              <th>Owner Account</th>
+              <th>Credential State</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "#64748b" }}>
+                  {r.statusChangedAt ? new Date(r.statusChangedAt).toLocaleString() : "—"}
+                </td>
+                <td>
+                  <strong>{r.name}</strong>
+                  <small style={{ display: "block", color: "#64748b" }}>{r.industry}</small>
+                </td>
+                <td>
+                  <span style={{ fontWeight: 600 }}>
+                    {r.status === "active" ? "Provisioned & Active" : r.status === "suspended" ? "Access Suspended" : r.status === "deleted" ? "Marked for 30d Purge" : "Pending Activation"}
+                  </span>
+                </td>
+                <td>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#f1f5f9", color: "#334155" }}>
+                    {r.plan} · {r.subscriptionStatus}
+                  </span>
+                </td>
+                <td>
+                  <span>{r.ownerEmail || "—"}</span>
+                </td>
+                <td>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: r.credentialStatus === "verified" ? "#059669" : "#d97706" }}>
+                    {r.credentialStatus === "verified" ? "● Verified" : "⏳ Pending Reset"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function description(tab: Tab) {
   return {
     Dashboard: "Your morning brief: what changed, what is off target, and what to act on.",

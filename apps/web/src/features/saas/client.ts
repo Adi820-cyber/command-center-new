@@ -38,6 +38,7 @@ export async function request<T>(
   } catch (netErr) {
     throw new Error(
       `Could not reach API server at ${base}: ${netErr instanceof Error ? netErr.message : "Network connection failed"}.`,
+      { cause: netErr },
     );
   }
 

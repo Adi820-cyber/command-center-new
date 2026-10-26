@@ -33,6 +33,7 @@ export async function loadControlOrganizations(tx: Tx) {
 type Organizations = ReturnType<typeof ControlOrganizationListSchema.parse>;
 type Fact = WorkspaceAskResponse["facts"][number];
 
+const PLATFORM_FINANCIALS = /\b(platform revenue|our revenue|total revenue|mrr|arr|billing revenue|saas kpi|platform kpi|financial summary)\b/i;
 const PRIVACY = /\b(kpi|metric|revenue|profit|sales|customer data|business data|performance|result|input)\b/i;
 const PENDING = /\b(pending|reset|credential|password|owner)\b/i;
 const PLAN = /\b(plan|subscription|tier|trial|past due|cancel)/i;
@@ -47,11 +48,63 @@ const fact = (label: string, value: string, tone: Fact["tone"] = "neutral"): Fac
  */
 export function answerOperatorQuestion(question: string, organizations: Organizations, today = new Date()): WorkspaceAskResponse {
   const suggestions = [
+    "Give me a platform revenue summary",
     "Which owners still need to reset their password?",
     "Summarize subscription plans",
     "How many organizations were onboarded recently?",
     "What data can the operator see?",
   ];
+
+  if (PLATFORM_FINANCIALS.test(question)) {
+    let totalMRR = 0;
+    let activeOrgs = 0;
+    const planCounts = new Map<string, number>();
+
+    for (const organization of organizations) {
+      if (organization.status === "active") activeOrgs++;
+      const plan = (organization.plan || "Pilot").trim();
+      const p = plan.toLowerCase();
+      let key = "Pilot";
+      let base = 199;
+      if (p.includes("enter")) {
+        key = "Enterprise";
+        base = 2500;
+      } else if (p.includes("pro")) {
+        key = "Professional";
+        base = 1200;
+      } else if (p.includes("stan")) {
+        key = "Standard";
+        base = 499;
+      }
+      planCounts.set(key, (planCounts.get(key) ?? 0) + 1);
+
+      if (organization.status === "active" && organization.subscriptionStatus !== "cancelled") {
+        totalMRR += base;
+      }
+    }
+
+    const totalARR = totalMRR * 12;
+    const arpu = activeOrgs > 0 ? Math.round(totalMRR / activeOrgs) : 0;
+
+    return WorkspaceAskResponseSchema.parse({
+      mode: "facts",
+      topic: "platform_revenues",
+      answer: `The platform generates approximately $${totalMRR.toLocaleString()}/month in recurring revenue ($${totalARR.toLocaleString()} ARR) across ${activeOrgs} active client organizations.`,
+      facts: [
+        fact("Total MRR", `$${totalMRR.toLocaleString()}`, "good"),
+        fact("Annualized Run Rate (ARR)", `$${totalARR.toLocaleString()}`, "good"),
+        fact("ARPU (Average per Client)", `$${arpu.toLocaleString()}/mo`, "neutral"),
+        fact("Active Organizations", String(activeOrgs), "good"),
+        fact("Total Organizations", String(organizations.length), "neutral"),
+        fact("Enterprise Tier", String(planCounts.get("Enterprise") ?? 0), "neutral"),
+        fact("Professional Tier", String(planCounts.get("Professional") ?? 0), "neutral"),
+        fact("Standard Tier", String(planCounts.get("Standard") ?? 0), "neutral"),
+        fact("Pilot Tier", String(planCounts.get("Pilot") ?? 0), "neutral"),
+      ],
+      resultIds: [],
+      suggestions,
+    });
+  }
 
   if (PRIVACY.test(question)) {
     return WorkspaceAskResponseSchema.parse({
