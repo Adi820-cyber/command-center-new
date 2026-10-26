@@ -331,9 +331,8 @@ export function LoginRoute() {
 
           {/* Password Reset Success Notice */}
           {resetSuccess && (
-            <div
-              role="status"
-              className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3 shadow-xs animate-in fade-in"
+            <output
+              className="block mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3 shadow-xs animate-in fade-in"
             >
               <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 mt-0.5">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -346,7 +345,7 @@ export function LoginRoute() {
                   Your password has been changed. Please sign in with your new credentials to continue.
                 </div>
               </div>
-            </div>
+            </output>
           )}
 
           {/* Error Alert */}

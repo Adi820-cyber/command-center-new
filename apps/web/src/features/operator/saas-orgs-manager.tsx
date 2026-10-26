@@ -620,16 +620,15 @@ export function SaaSOrganizationsManager({
   const [confirming, setConfirming] = useState<{ id: string; kind: "delete" | "erase"; typed: string }>();
 
   // Operator user email and form states
-  const [operatorUserEmail, setOperatorUserEmail] = useState(operatorEmail ?? "");
+  const [sessionEmail, setSessionEmail] = useState("");
+  const operatorUserEmail = operatorEmail || sessionEmail;
   const [ownerEmailInput, setOwnerEmailInput] = useState("");
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    if (operatorEmail) {
-      setOperatorUserEmail(operatorEmail);
-    } else {
+    if (!operatorEmail) {
       void getCurrentSession().then((s) => {
-        if (s?.user?.email) setOperatorUserEmail(s.user.email);
+        if (s?.user?.email) setSessionEmail(s.user.email);
       });
     }
   }, [operatorEmail]);
@@ -660,7 +659,25 @@ export function SaaSOrganizationsManager({
   }
 
   useEffect(() => {
-    void loadData();
+    let active = true;
+    void Promise.all([
+      request("/api/control/organizations", ControlOrganizationListSchema),
+      request("/api/control/templates", TemplateListSchema).catch(() => [] as TemplateSummary[]),
+    ])
+      .then(([orgRows, tmplRows]) => {
+        if (!active) return;
+        setOrganizations(orgRows);
+        setTemplates(tmplRows);
+        setLoading(false);
+      })
+      .catch((e) => {
+        if (!active) return;
+        setMessage(e instanceof Error ? e.message : "Failed to load organizations from control service.");
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Merge loaded templates with catalogue fallbacks to guarantee all 21 industry options
@@ -1388,7 +1405,8 @@ export function SaaSOrganizationsManager({
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, fontSize: 12, color: "#475569" }}>
             <span>Filtered results: <strong>{filteredOrgs.length}</strong> of {organizations.length} organizations</span>
             {industryFilter !== "all" && (
-              <span
+              <button
+                type="button"
                 style={{
                   background: "#eff6ff",
                   color: "#1d4ed8",
@@ -1396,15 +1414,18 @@ export function SaaSOrganizationsManager({
                   borderRadius: 9999,
                   fontWeight: 600,
                   cursor: "pointer",
+                  border: "none",
+                  fontSize: 12,
                 }}
                 onClick={() => setIndustryFilter("all")}
                 title="Clear industry filter"
               >
                 Industry: {industryFilter} ✕
-              </span>
+              </button>
             )}
             {statusFilter !== "all" && (
-              <span
+              <button
+                type="button"
                 style={{
                   background: "#f1f5f9",
                   color: "#334155",
@@ -1412,12 +1433,14 @@ export function SaaSOrganizationsManager({
                   borderRadius: 9999,
                   fontWeight: 600,
                   cursor: "pointer",
+                  border: "none",
+                  fontSize: 12,
                 }}
                 onClick={() => setStatusFilter("all")}
                 title="Clear status filter"
               >
                 Status: {statusFilter} ✕
-              </span>
+              </button>
             )}
             <button
               type="button"
@@ -1707,24 +1730,44 @@ export function SaaSOrganizationsManager({
 
       {/* ── Confirmation Modal (Exact Name Typing required) ── */}
       {confirming && (
-        <div
+        <dialog
+          open
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(2px)",
+            width: "100%",
+            height: "100%",
+            maxWidth: "100%",
+            maxHeight: "100%",
+            background: "transparent",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 9999,
             padding: 16,
+            border: "none",
+            margin: 0,
           }}
-          onClick={() => setConfirming(undefined)}
         >
+          {/* Backdrop button */}
+          <button
+            type="button"
+            aria-label="Close dialog"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.6)",
+              backdropFilter: "blur(2px)",
+              border: "none",
+              padding: 0,
+              margin: 0,
+              cursor: "default",
+            }}
+            onClick={() => setConfirming(undefined)}
+          />
           <div
             className="saas-card"
-            style={{ maxWidth: 480, width: "100%", background: "#ffffff", padding: 24, borderRadius: 12 }}
-            onClick={(e) => e.stopPropagation()}
+            style={{ position: "relative", zIndex: 1, maxWidth: 480, width: "100%", background: "#ffffff", padding: 24, borderRadius: 12 }}
           >
             {(() => {
               const target = organizations.find((o) => o.id === confirming.id);
@@ -1746,7 +1789,6 @@ export function SaaSOrganizationsManager({
                     To confirm, please type <strong>{target.name}</strong> below:
                     <input
                       type="text"
-                      autoFocus
                       value={confirming.typed}
                       onChange={(e) => setConfirming({ ...confirming, typed: e.target.value })}
                       placeholder="Type the exact organization name"
@@ -1780,7 +1822,7 @@ export function SaaSOrganizationsManager({
               );
             })()}
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   );

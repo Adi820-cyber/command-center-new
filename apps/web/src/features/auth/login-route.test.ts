@@ -66,7 +66,7 @@ describe("validateLoginInput", () => {
 describe("loginLoader", () => {
   it("renders login and clears stale sessions when reset=success is present", async () => {
     const request = new Request("https://orbit.invalid/login?reset=success");
-    const result = await loginLoader({ request, params: {} } as any);
+    const result = await loginLoader({ request, params: {} } as unknown as Parameters<typeof loginLoader>[0]);
     expect(result).toBeNull();
   });
 });

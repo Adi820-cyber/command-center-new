@@ -132,10 +132,10 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
       req,
       async (tx, t, sub) => {
         // Ensure knowledge chunks exist
-        const [cnt] = await tx.query<{ c: number }>(
+        const [cnt] = (await tx.query(
           "select count(*)::int as c from kpi.knowledge_chunks where tenant_id = $1::uuid",
           [t],
-        );
+        )) as unknown as { c: number }[];
         if (!cnt || cnt.c === 0) {
           try {
             await tx.query("select kpi.refresh_tenant_knowledge($1::uuid)", [t]);
@@ -145,18 +145,18 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
         }
 
         // Determine active role badge
-        const [ownerRow] = await tx.query<{ is_owner: boolean }>(
+        const [ownerRow] = (await tx.query(
           "select kpi.is_owner($1::uuid) as is_owner",
           [t],
-        );
+        )) as unknown as { is_owner: boolean }[];
         let roleBadge = "Member Scoped View";
         if (ownerRow?.is_owner) {
           roleBadge = "Organization Owner (Full Access)";
         } else {
-          const myRoles = await tx.query<{ name: string }>(
+          const myRoles = (await tx.query(
             "select name from kpi.my_roles($1::uuid)",
             [t],
-          );
+          )) as unknown as { name: string }[];
           if (myRoles.length > 0) {
             roleBadge = `${myRoles.map((r) => r.name).join(", ")} View`;
           }
@@ -178,15 +178,15 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
         let knowledgeMatches: KnowledgeRow[] = [];
         try {
           if (vecStr) {
-            knowledgeMatches = await tx.query<KnowledgeRow>(
+            knowledgeMatches = (await tx.query(
               "select id, title, content, category, domain, source, similarity, matched_by, kpi_id, unit_id from kpi.search_knowledge($1::uuid, $2, $3::public.vector, 5, 0.15)",
               [t, question, vecStr],
-            );
+            )) as unknown as KnowledgeRow[];
           } else {
-            knowledgeMatches = await tx.query<KnowledgeRow>(
+            knowledgeMatches = (await tx.query(
               "select id, title, content, category, domain, source, similarity, matched_by, kpi_id, unit_id from kpi.search_knowledge($1::uuid, $2, null, 5, 0.15)",
               [t, question],
-            );
+            )) as unknown as KnowledgeRow[];
           }
         } catch {
           // If search query fails, gracefully fallback
