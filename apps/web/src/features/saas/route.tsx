@@ -79,11 +79,6 @@ function Empty({ children }: { children: ReactNode }) {
 const onClickAsync = (fn: () => Promise<void>) => () => {
   void fn();
 };
-const onSubmitAsync =
-  (fn: (event: FormEvent<HTMLFormElement>) => Promise<void>) =>
-  (event: FormEvent<HTMLFormElement>) => {
-    void fn(event);
-  };
 export function SaasRoute() {
   const [organizations, setOrganizations] = useState<
     ReturnType<typeof TenantListSchema.parse>
@@ -211,9 +206,13 @@ export function SaasRoute() {
       );
       if (current === generation.current) {
         setWorkspace(updated);
+        const targetEmail = typeof body === "object" && body !== null && "email" in body ? String((body as Record<string, unknown>).email) : "";
+        const inviteLink = targetEmail
+          ? `${window.location.origin}/invite?email=${encodeURIComponent(targetEmail)}#${result.token}`
+          : `${window.location.origin}/invite#${result.token}`;
         setMessage(
           result.token
-            ? `Invitation: ${window.location.origin}/invite#${result.token}`
+            ? `✓ Email sent to ${targetEmail || "invitee"} with password setup option! (Login ID: ${targetEmail || "email"}). Invitation link: ${inviteLink}`
             : "Saved. Your workspace is up to date.",
         );
       }
@@ -1528,110 +1527,328 @@ function Governance({
 }
 export function InvitationRoute() {
   const [token] = useState(() => window.location.hash.slice(1));
+  const [emailParam] = useState(() => new URLSearchParams(window.location.search).get("email") || "");
+  const [email, setEmail] = useState(() => new URLSearchParams(window.location.search).get("email") || "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"setPassword" | "signIn">("setPassword");
   // Who is signed in, so a person can see at once whether it is the invited account.
   const [signedInAs, setSignedInAs] = useState<string | null>();
+
   useEffect(() => {
     void getCurrentSession().then((session) => setSignedInAs(session?.user.email ?? null));
   }, []);
+
+  async function handleAccept(activeToken: string = token) {
+    if (!activeToken) {
+      setErrorMsg("Invitation token is missing. Please check your invitation link.");
+      return;
+    }
+    setBusy(true);
+    setErrorMsg("");
+    try {
+      await mutate("/api/saas/invitations/accept", { token: activeToken });
+      window.history.replaceState(null, "", "/invite");
+      window.location.assign("/");
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Unable to accept invitation.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSetPasswordAndJoin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const targetEmail = (emailParam || email).trim();
+    if (!targetEmail) {
+      setErrorMsg("Please enter your work email.");
+      return;
+    }
+    if (password.length < 8) {
+      setErrorMsg("Password must be at least 8 characters long.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg("Passwords do not match. Please re-enter.");
+      return;
+    }
+
+    setBusy(true);
+    setMessage("");
+    setErrorMsg("");
+
+    try {
+      const client = await getAuthClient();
+
+      // 1. Attempt to sign up with the invited email and desired password
+      const { data: signUpData, error: signUpError } = await client.auth.signUp({
+        email: targetEmail,
+        password,
+      });
+
+      // 2. If the user already exists, sign in directly with the entered password
+      if (signUpError && (signUpError.message?.toLowerCase().includes("already registered") || signUpError.status === 422)) {
+        const { error: signInError } = await client.auth.signInWithPassword({
+          email: targetEmail,
+          password,
+        });
+        if (signInError) {
+          setErrorMsg(
+            "An account already exists with this email. Please enter your existing password or switch to 'Sign in' below.",
+          );
+          setBusy(false);
+          return;
+        }
+      } else if (signUpError) {
+        setErrorMsg(signUpError.message || "Unable to set password.");
+        setBusy(false);
+        return;
+      }
+
+      // 3. Check if session was established immediately
+      const session = (await client.auth.getSession()).data.session ?? signUpData?.session;
+      if (session) {
+        setSignedInAs(session.user.email ?? targetEmail);
+        setMessage("Password set successfully! Joining your organization workspace…");
+        await handleAccept(token);
+      } else {
+        setMessage(
+          `Your password was set! A confirmation email was sent to ${targetEmail}. Please check your inbox and click the verification link to enter your workspace.`,
+        );
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Authentication service unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSignInAndJoin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const targetEmail = (emailParam || email).trim();
+    setBusy(true);
+    setErrorMsg("");
+    setMessage("");
+    try {
+      const client = await getAuthClient();
+      const { data, error } = await client.auth.signInWithPassword({
+        email: targetEmail,
+        password,
+      });
+      if (error) {
+        setErrorMsg(error.message || "Invalid credentials.");
+        setBusy(false);
+        return;
+      }
+      if (data.session) {
+        setSignedInAs(data.session.user.email ?? targetEmail);
+        setMessage("Signed in! Joining your organization workspace…");
+        await handleAccept(token);
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Sign in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isMatchedSession = signedInAs && emailParam && signedInAs.toLowerCase() === emailParam.toLowerCase();
+
   return (
-    <main className="saas-auth">
-      <p className="eyebrow">YOUR WORKSPACE INVITATION</p>
-      <h1>Join your organization</h1>
-      <p>
-        Sign in with the email that received this invitation, then accept. Your
-        organization controls your access.
+    <main className="saas-auth" style={{ maxWidth: 540 }}>
+      <p className="eyebrow" style={{ letterSpacing: "0.08em", fontWeight: 700, color: "#166534" }}>
+        YOUR WORKSPACE INVITATION
       </p>
-      {signedInAs !== undefined && (
-        <p className="warn" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          {signedInAs ? (
-            <>
-              <span>
-                You are signed in as <strong>{signedInAs}</strong>. If that is not the invited email, sign out first.
-              </span>
-              <button type="button" className="secondary" onClick={() => void signOut().then(() => window.location.reload())}>
-                Sign out
-              </button>
-            </>
-          ) : (
-            <span>You are not signed in. Sign in (or create your account) with the invited email, then come back to this link.</span>
-          )}
-        </p>
+      <h1 style={{ fontSize: 26, fontWeight: 700, margin: "8px 0 16px", color: "#0f172a" }}>
+        {isMatchedSession ? "Accept your invitation" : "Set password & join organization"}
+      </h1>
+
+      {emailParam && (
+        <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px 18px", borderRadius: 10, marginBottom: 20 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 2 }}>
+            Your Login ID (Username)
+          </span>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#14532d", display: "flex", alignItems: "center", gap: 8 }}>
+            <span>✉</span>
+            <span>{emailParam}</span>
+          </div>
+          <span style={{ fontSize: 12, color: "#15803d", marginTop: 4, display: "block" }}>
+            This email address is your permanent ID to sign in to Command Center.
+          </span>
+        </div>
       )}
-      <button
-        disabled={busy || !token}
-        onClick={onClickAsync(async () => {
-          setBusy(true);
-          try {
-            await mutate("/api/saas/invitations/accept", { token });
-            window.history.replaceState(null, "", "/invite");
-            window.location.assign("/");
-          } catch (e) {
-            setMessage(
-              e instanceof Error ? e.message : "Unable to accept invitation.",
-            );
-          } finally {
-            setBusy(false);
-          }
-        })}
-      >
-        Accept invitation
-      </button>
-      <output>{message}</output>
-      <p>
-        Keep this invitation link private. If you need to sign in, open sign-in
-        in a separate tab and return here.
-      </p>
-      <a href="/login" target="_blank" rel="noreferrer">
-        Sign in
-      </a>
-      <details>
-        <summary>Create a sign-in account</summary>
-        <p>
-          Use the invited email. Confirm it using the email from the sign-in
-          service, then return to this invitation.
-        </p>
-        <form
-          onSubmit={onSubmitAsync(async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            setBusy(true);
-            try {
-              const client = await getAuthClient();
-              const { error } = await client.auth.signUp({
-                email: text(f, "email"),
-                password: text(f, "password"),
-              });
-              setMessage(
-                error
-                  ? "Unable to create account. Check the email and password requirements."
-                  : "Check your email to confirm your account, then sign in and accept this invitation.",
-              );
-            } catch {
-              setMessage("Sign-in service unavailable.");
-            } finally {
-              setBusy(false);
-            }
-          })}
-        >
-          <label>
-            Email
-            <input name="email" type="email" required autoComplete="email" />
-          </label>
-          <label>
-            Password
-            <input
-              name="password"
-              type="password"
-              minLength={12}
-              required
-              autoComplete="new-password"
-            />
-          </label>
-          <button disabled={busy}>Create account</button>
-        </form>
-      </details>
+
+      {errorMsg && (
+        <div style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
+          {errorMsg}
+        </div>
+      )}
+
+      {message && (
+        <div style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
+          {message}
+        </div>
+      )}
+
+      {isMatchedSession ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ color: "#475569", fontSize: 14, margin: 0 }}>
+            You are signed in as <strong>{signedInAs}</strong>. Click below to accept the invitation and activate your assigned roles.
+          </p>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || !token}
+            onClick={() => void handleAccept(token)}
+            style={{ width: "100%", padding: "12px 18px", fontSize: 15, fontWeight: 700 }}
+          >
+            {busy ? "Accepting…" : "✓ Accept Invitation & Open Workspace"}
+          </button>
+          <div style={{ textAlign: "center", marginTop: 8 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void signOut().then(() => window.location.reload())}
+              style={{ fontSize: 13 }}
+            >
+              Sign out of {signedInAs}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {mode === "setPassword" ? (
+            <form onSubmit={(e) => void handleSetPasswordAndJoin(e)} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {!emailParam && (
+                <label>
+                  Work email
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    autoComplete="email"
+                  />
+                </label>
+              )}
+              <label>
+                Set new password
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                />
+              </label>
+              <label>
+                Confirm password
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat your password"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary"
+                disabled={busy || !token || !password || !confirmPassword}
+                style={{ width: "100%", padding: "12px 18px", fontSize: 15, fontWeight: 700, marginTop: 4 }}
+              >
+                {busy ? "Setting password…" : "🔐 Set Password & Join Organization"}
+              </button>
+
+              <div style={{ textAlign: "center", marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                Already have a password for this account?{" "}
+                <button
+                  type="button"
+                  style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 600, padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                  onClick={() => setMode("signIn")}
+                >
+                  Sign in instead
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={(e) => void handleSignInAndJoin(e)} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {!emailParam && (
+                <label>
+                  Work email
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    autoComplete="email"
+                  />
+                </label>
+              )}
+              <label>
+                Password
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your existing password"
+                  autoComplete="current-password"
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary"
+                disabled={busy || !token || !password}
+                style={{ width: "100%", padding: "12px 18px", fontSize: 15, fontWeight: 700, marginTop: 4 }}
+              >
+                {busy ? "Signing in…" : "Sign In & Accept Invitation"}
+              </button>
+
+              <div style={{ textAlign: "center", marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                Need to create or set your password?{" "}
+                <button
+                  type="button"
+                  style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 600, padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                  onClick={() => setMode("setPassword")}
+                >
+                  Set password
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {signedInAs && !isMatchedSession && (
+        <div style={{ marginTop: 24, padding: "12px 16px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: 13, color: "#92400e" }}>
+          <span>
+            You are currently signed in as <strong>{signedInAs}</strong>. If this invitation was sent to another address, please sign out first.
+          </span>
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void signOut().then(() => window.location.reload())}
+              style={{ fontSize: 12, padding: "4px 10px" }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
+

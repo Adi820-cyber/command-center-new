@@ -1341,15 +1341,15 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
       )}
 
       <section className="saas-card">
-        <h2>{canCreateLogins ? "Or send an invitation link" : "Add a person"}</h2>
+        <h2>Add a person & send invitation email</h2>
         <p className="muted">
-          They get a private invitation link, shown here once. They sign in or create their account with this exact email, then open the link.
-          {canCreateLogins ? " Use this for someone who already has an account." : " Your platform operator can set up logins with temporary passwords instead."}
+          Enter their work email and assign their roles. A secure email will be sent directly to that address with an option to set their password. Their email serves as their permanent Login ID.
         </p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void change("/invitations", { email: email.trim(), roleIds: inviteRoles }).then((ok) => {
+            const targetEmail = email.trim();
+            void change("/invitations", { email: targetEmail, roleIds: inviteRoles }).then((ok) => {
               if (ok) {
                 setEmail("");
                 setInviteRoles([]);
@@ -1358,18 +1358,30 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
           }}
         >
           <label>
-            Work email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            Work email (will receive password setup email & serves as Login ID)
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="colleague@example.com"
+              required
+            />
           </label>
-          <div className="console-roles">
-            {w.roles.map((r) => (
-              <label key={r.id}>
-                <input type="checkbox" checked={inviteRoles.includes(r.id)} onChange={() => setInviteRoles(toggle(inviteRoles, r.id))} />
-                {r.name}
-              </label>
-            ))}
-          </div>
-          <button disabled={!email.trim() || inviteRoles.length === 0}>Create invitation</button>
+          <fieldset className="kpi-pick" style={{ border: "none", padding: 0, margin: "14px 0" }}>
+            <legend className="muted" style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Assign Roles</legend>
+            <div className="console-roles">
+              {w.roles.map((r) => (
+                <label key={r.id}>
+                  <input type="checkbox" checked={inviteRoles.includes(r.id)} onChange={() => setInviteRoles(toggle(inviteRoles, r.id))} />
+                  {r.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button type="submit" disabled={!email.trim() || inviteRoles.length === 0} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span>✉</span>
+            <span>Send invitation & password setup email</span>
+          </button>
         </form>
       </section>
     </>

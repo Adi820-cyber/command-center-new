@@ -221,3 +221,21 @@ export const ChangeOwnPasswordRequestSchema = z.strictObject({
   code: z.string().regex(/^\d{6}$/, "The code has 6 digits.").optional().or(z.literal("")),
   password: z.string().min(8, "Use at least 8 characters.").max(72, "Use at most 72 characters."),
 });
+
+// ---------------------------------------------------------------------------
+// Invitation & Password Setup Email
+// ---------------------------------------------------------------------------
+
+export const SendInviteMailRequestSchema = z.strictObject({
+  email: z.string().trim().email(),
+  token: z.string().trim().min(1),
+  roleNames: z.array(z.string()).default([]),
+});
+export type SendInviteMailRequest = z.infer<typeof SendInviteMailRequestSchema>;
+
+export const SendInviteMailResponseSchema = z.strictObject({
+  sent: z.boolean(),
+  sentTo: z.string(),
+});
+export type SendInviteMailResponse = z.infer<typeof SendInviteMailResponseSchema>;
+

@@ -120,9 +120,10 @@ export async function registerSaasRoutes(
     tenant(req, async (tx, t, sub) => {
       await owner(tx, t);
       const b = input(InviteSchema, req.body);
+      const roleNames: string[] = [];
       for (const id of b.roleIds) {
         const rows = await tx.query(
-          "select id from kpi.roles where tenant_id=$1 and id=$2",
+          "select id, name from kpi.roles where tenant_id=$1 and id=$2",
           [t, id],
         );
         if (!rows.length)
@@ -130,6 +131,7 @@ export async function registerSaasRoutes(
             "invalid_request",
             "A role is not in this organization.",
           );
+        if (typeof rows[0]?.name === "string") roleNames.push(rows[0].name);
       }
       const token = randomBytes(32).toString("hex");
       await tx.query(
@@ -137,7 +139,71 @@ export async function registerSaasRoutes(
         [t, b.email, hash(token), `{${b.roleIds.join(",")}}`],
       );
       await audit(tx, t, sub, "invitation.created");
-      return { token };
+
+      // Retrieve organization name for email
+      const [orgRow] = await tx.query("select name from kpi.organizations where id=$1", [t]);
+      const orgName = typeof orgRow?.name === "string" ? orgRow.name : "Your Organization";
+      const host = req.headers.origin || "https://cmd-web-dun.vercel.app";
+      const inviteUrl = `${host}/invite?email=${encodeURIComponent(b.email)}#${token}`;
+
+      let emailSent = false;
+      const rolesDesc = roleNames.length ? ` for role(s): ${roleNames.join(", ")}` : "";
+
+      if (options.mailer) {
+        try {
+          await options.mailer.send(
+            b.email,
+            `Invitation to join ${orgName} on Command Center & Set Your Password`,
+            [
+              "Hello,",
+              "",
+              `You have been invited to join ${orgName} on Command Center${rolesDesc}.`,
+              "",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "YOUR LOGIN CREDENTIALS",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              `Login ID / Username: ${b.email}`,
+              "",
+              "Your email address is your permanent Login ID. To set your account password and access your workspace, please click the secure link below:",
+              inviteUrl,
+              "",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "HOW TO ACCESS YOUR ACCOUNT:",
+              `1. Open the secure link: ${inviteUrl}`,
+              `2. Your Login ID (${b.email}) will be verified.`,
+              "3. Choose and confirm your new password.",
+              `4. You will immediately access the ${orgName} workspace.`,
+              "",
+              "This invitation link is private and single-use.",
+              "",
+              `${orgName} Team`,
+            ].join("\n"),
+          );
+          emailSent = true;
+        } catch (mailErr) {
+          console.error("Failed to deliver invitation email via options.mailer", mailErr);
+        }
+      }
+
+      if (!emailSent) {
+        // Fallback to identity API if mailer not configured on customer API
+        const identityBase = process.env.IDENTITY_API_BASE_URL || "https://cmd-identity-api.vercel.app";
+        try {
+          const res = await fetch(`${identityBase}/api/identity/organizations/${t}/invitations/send-mail`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: req.headers.authorization ?? "",
+            },
+            body: JSON.stringify({ email: b.email, token, roleNames }),
+          });
+          if (res.ok) emailSent = true;
+        } catch {
+          // best-effort
+        }
+      }
+
+      return { token, emailSent, inviteUrl };
     }),
   );
   app.post("/api/saas/:tenantId/members/:id/revoke", async (req) =>

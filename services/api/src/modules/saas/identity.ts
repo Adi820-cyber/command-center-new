@@ -1,7 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { randomInt } from "node:crypto";
-import { AddLoginsRequestSchema, ChangeOwnPasswordRequestSchema, InviteMembersResponseSchema, PasswordCodeResponseSchema, ResetPasswordRequestSchema } from "@orbit/contracts";
+import {
+  AddLoginsRequestSchema,
+  ChangeOwnPasswordRequestSchema,
+  InviteMembersResponseSchema,
+  PasswordCodeResponseSchema,
+  ResetPasswordRequestSchema,
+  SendInviteMailRequestSchema,
+  SendInviteMailResponseSchema,
+} from "@orbit/contracts";
 import { verifyAccessTokenClaims } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
 import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./helpers.ts";
@@ -153,4 +161,62 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     );
     return { ok: true };
   });
+
+  app.post("/api/identity/organizations/:tenantId/invitations/send-mail", async (req) => {
+    const { tenantId } = input(z.object({ tenantId: uuid }), req.params);
+    const body = input(SendInviteMailRequestSchema, req.body);
+    const sub = await subject(req);
+
+    await inSubject(
+      options.identityDatabase,
+      sub,
+      async (tx) => {
+        const [row] = await tx.query("select kpi.is_owner($1::uuid) as allowed", [tenantId]);
+        if (row?.allowed !== true) throw new ApiError("forbidden", "Only the organization's owner can invite members.");
+      },
+      "kpi_identity_app",
+    );
+
+    const host = req.headers.origin || "https://cmd-web-dun.vercel.app";
+    const inviteUrl = `${host}/invite?email=${encodeURIComponent(body.email)}#${body.token}`;
+
+    if (options.mailer) {
+      const rolesDesc = body.roleNames.length ? ` for role(s): ${body.roleNames.join(", ")}` : "";
+      try {
+        await options.mailer.send(
+          body.email,
+          "Invitation to join Command Center & Set Your Password",
+          [
+            "Hello,",
+            "",
+            `You have been invited to join Command Center${rolesDesc}.`,
+            "",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "YOUR LOGIN CREDENTIALS",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            `Login ID / Username: ${body.email}`,
+            "",
+            "Your email address is your permanent Login ID. To set your account password and access your workspace, please click the secure link below:",
+            inviteUrl,
+            "",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "HOW TO ACCESS YOUR ACCOUNT:",
+            `1. Open the secure link: ${inviteUrl}`,
+            `2. Your Login ID (${body.email}) will be verified.`,
+            "3. Choose and confirm your new password.",
+            "4. You will immediately access your role-authorized workspace.",
+            "",
+            "This invitation link is private and single-use.",
+            "",
+            "Command Center Platform",
+          ].join("\n"),
+        );
+      } catch (err) {
+        console.error("Failed to deliver invite email via identity options.mailer", err);
+      }
+    }
+
+    return SendInviteMailResponseSchema.parse({ sent: true, sentTo: maskEmail(body.email) });
+  });
 }
+

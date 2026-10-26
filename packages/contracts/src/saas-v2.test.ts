@@ -39,4 +39,22 @@ describe("operator tenant metadata contracts", () => {
     ]);
     expect(result.success).toBe(true);
   });
+
+  it("validates SendInviteMail schemas correctly", async () => {
+    const { SendInviteMailRequestSchema, SendInviteMailResponseSchema } = await import("./index.ts");
+    const parsed = SendInviteMailRequestSchema.parse({
+      email: "colleague@acme.com",
+      token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      roleNames: ["CTO", "Data contributor"],
+    });
+    expect(parsed.email).toBe("colleague@acme.com");
+    expect(parsed.roleNames).toEqual(["CTO", "Data contributor"]);
+
+    const res = SendInviteMailResponseSchema.parse({
+      sent: true,
+      sentTo: "co•••@acme.com",
+    });
+    expect(res.sent).toBe(true);
+  });
 });
+
