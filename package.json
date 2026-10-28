@@ -3,7 +3,7 @@
   "private": true,
   "description": "Command Center — Multi-tenant role-scoped KPI & leadership decision workspace",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "workspaces": [
     "apps/*",

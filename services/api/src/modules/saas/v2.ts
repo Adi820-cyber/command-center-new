@@ -67,12 +67,27 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
   // The KPI catalog is reference data, the same for everyone who is signed in.
   app.get("/api/saas/catalog", async (req) =>
     inSubject(options.database, await subject(req), async (tx) => {
-      const kpis = await tx.query(
+      const rawKpis = await tx.query(
         'select id,name,description,domain,industries,formula_text as "formulaText",unit,direction,measures,needs_history as "needsHistory",sources from kpi_catalog.kpis order by domain,id',
       );
-      const measures = await tx.query(
+      const kpis = rawKpis.map((k: any) => ({
+        ...k,
+        industries: typeof k.industries === 'string' ? JSON.parse(k.industries) : (k.industries ?? []),
+        measures: typeof k.measures === 'string' ? JSON.parse(k.measures) : (k.measures ?? []),
+        sources: typeof k.sources === 'string' ? JSON.parse(k.sources) : (k.sources ?? []),
+        needsHistory: k.needsHistory === true || k.needsHistory === 1 || k.needsHistory === '1',
+      }));
+      const rawMeasures = await tx.query(
         'select key,name,unit,description,rolls_up as "rollsUp",domain from kpi_catalog.measures order by key',
       );
+      const measures = rawMeasures.map((m: any) => ({
+        key: String(m.key),
+        name: String(m.name),
+        unit: String(m.unit),
+        description: String(m.description ?? ''),
+        rollsUp: m.rollsUp === true || m.rollsUp === 1 || m.rollsUp === '1',
+        domain: String(m.domain ?? ''),
+      }));
       return CatalogResponseSchema.parse({ kpis, measures });
     }),
   );
@@ -321,6 +336,31 @@ export async function registerV2Routes(app: FastifyInstance, options: SaasOption
           }
           return row?.id;
         });
+        if (options.mailer && prepared.people[0]?.temporaryPassword) {
+          try {
+            await options.mailer.send(
+              body.ownerEmail,
+              `Your Temporary Sign-In Credentials for ${body.name}`,
+              [
+                `Hello ${body.ownerName},`,
+                "",
+                `Your organization "${body.name}" has been created on Command Center.`,
+                "",
+                "Your Temporary Sign-In Credentials:",
+                `• Login ID (Email): ${body.ownerEmail}`,
+                `• Role: Organization Administrator`,
+                `• Temporary Password: ${prepared.people[0].temporaryPassword}`,
+                "",
+                "Important:",
+                "When you sign in for the first time, you will be required to change your password by validating a 6-digit one-time verification code (OTP) sent to this email address.",
+                "",
+                "Command Center Security",
+              ].join("\n"),
+            );
+          } catch (mailErr) {
+            console.error("Failed to deliver temporary credentials email:", mailErr);
+          }
+        }
         return ProvisionResponseSchema.parse({
           id,
           mode: "logins",

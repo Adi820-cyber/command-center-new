@@ -171,13 +171,13 @@ export function CsvImport({ workspace: w, reload }: { workspace: SaasWorkspace; 
             <fieldset className="csv-choices">
               <legend className="sr-only">KPIs</legend>
               {groups.map(([domain, list]) => (
-                <div key={domain} style={{ gridColumn: "1 / -1" }}>
-                  <strong style={{ fontSize: 12 }}>{domainTitle(domain || null)}</strong>
-                  <div className="csv-choices" style={{ border: 0, padding: "4px 0", maxHeight: "none", background: "transparent" }}>
+                <div key={domain} className="csv-choice-group">
+                  <div className="csv-choice-domain">{domainTitle(domain || null)}</div>
+                  <div className="csv-choices-subgrid">
                     {list.map((k) => (
                       <label key={k.id}>
                         <input type="checkbox" checked={kpiIds.includes(k.id)} onChange={() => toggle(kpiIds, setKpiIds, k.id)} />
-                        {k.name}
+                        <span>{k.name}</span>
                       </label>
                     ))}
                   </div>
@@ -189,12 +189,14 @@ export function CsvImport({ workspace: w, reload }: { workspace: SaasWorkspace; 
         <h3 style={{ margin: "18px 0 8px", fontSize: 14 }}>Units</h3>
         <fieldset className="csv-choices">
           <legend className="sr-only">Units</legend>
-          {w.units.map((u) => (
-            <label key={u.id}>
-              <input type="checkbox" checked={unitIds.includes(u.id)} onChange={() => toggle(unitIds, setUnitIds, u.id)} />
-              {u.name}
-            </label>
-          ))}
+          <div className="csv-choices-subgrid" style={{ gridColumn: "1 / -1" }}>
+            {w.units.map((u) => (
+              <label key={u.id}>
+                <input type="checkbox" checked={unitIds.includes(u.id)} onChange={() => toggle(unitIds, setUnitIds, u.id)} />
+                <span>{u.name}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
         <div className="saas-form-grid" style={{ marginTop: 14 }}>
           <label>

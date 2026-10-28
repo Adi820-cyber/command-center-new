@@ -216,6 +216,7 @@ export const PasswordCodeResponseSchema = z.strictObject({
   /** Where the code went, partly hidden. */
   sentTo: z.string(),
   expiresInMinutes: z.number().int().positive(),
+  debugCode: z.string().optional(),
 });
 export const ChangeOwnPasswordRequestSchema = z.strictObject({
   code: z.string().regex(/^\d{6}$/, "The code has 6 digits.").optional().or(z.literal("")),

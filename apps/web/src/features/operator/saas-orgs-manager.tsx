@@ -877,10 +877,13 @@ export function SaaSOrganizationsManager({
       setIssued({
         title: `Organization “${field("name")}” Initialized (${finalIndustry})`,
         mode: result.mode,
-        people: [result.owner],
+        people: [{
+          ...result.owner,
+          roleKeys: ["Organization Administrator"],
+        }],
       });
       setMessage(
-        `Organization “${field("name")}” has been added with ${chosenTemplate?.kpiCount ?? 0} predefined KPIs! Initial credentials or invite link are displayed below.`,
+        `Organization “${field("name")}” created successfully with role “Organization Administrator”! Temporary credentials generated and email dispatched to ${ownerEmail}.`,
       );
       form.reset();
       setOwnerEmailInput("");
@@ -1116,16 +1119,16 @@ export function SaaSOrganizationsManager({
                 <input name="plan" required maxLength={80} defaultValue="Enterprise Pilot" placeholder="e.g. Standard, Growth, Enterprise" />
               </label>
               <label>
-                Owner / Primary Admin Name *
+                Organization Administrator Name *
                 <input name="ownerName" required maxLength={120} placeholder="e.g. Dr. Rajesh Kumar" />
               </label>
               <label>
-                Owner Sign-In Email *
+                Organization Administrator Email (Login ID) *
                 <input
                   name="email"
                   type="email"
                   required
-                  placeholder="owner@clientorg.com"
+                  placeholder="admin@clientorg.com"
                   value={ownerEmailInput}
                   onChange={(e) => {
                     setOwnerEmailInput(e.target.value);
@@ -1133,6 +1136,26 @@ export function SaaSOrganizationsManager({
                   }}
                 />
               </label>
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                background: "#f0fdf4",
+                border: "1.5px solid #86efac",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontSize: 12,
+                color: "#166534",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 16 }}>🛡️</span>
+              <div>
+                <strong>Assigned Role: Organization Administrator.</strong> The organization administrator is provisioned with temporary sign-in credentials dispatched to their email. On first login, they will be directed to validate their email with a 6-digit OTP and set a permanent password before accessing the organization to manage roles, staff, and KPI settings.
+              </div>
             </div>
 
             {operatorUserEmail && ownerEmailInput.trim().toLowerCase() === operatorUserEmail.toLowerCase() && (

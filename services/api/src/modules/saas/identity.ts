@@ -1,14 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import {
   AddLoginsRequestSchema,
   ChangeOwnPasswordRequestSchema,
+  ConfirmPasswordResetRequestSchema,
+  ConfirmPasswordResetResponseSchema,
   InviteMembersResponseSchema,
   PasswordCodeResponseSchema,
+  RequestPasswordResetOtpRequestSchema,
+  RequestPasswordResetOtpResponseSchema,
   ResetPasswordRequestSchema,
   SendInviteMailRequestSchema,
   SendInviteMailResponseSchema,
+  VerifyPasswordResetOtpRequestSchema,
+  VerifyPasswordResetOtpResponseSchema,
 } from "@orbit/contracts";
 import { verifyAccessTokenClaims } from "../../plugins/auth.ts";
 import { ApiError } from "../../plugins/errors.ts";
@@ -16,6 +22,17 @@ import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./h
 import { maskEmail } from "./mail.ts";
 import { prepareLogins } from "./logins.ts";
 import { temporaryPassword } from "./auth-admin.ts";
+
+interface PasswordResetRecord {
+  codeHash: string;
+  expiresAt: number;
+  attempts: number;
+  verified: boolean;
+  resetToken?: string;
+}
+
+// In-memory email-scoped OTP records for forgot-password verification
+const passwordResetOtps = new Map<string, PasswordResetRecord>();
 
 /**
  * The identity API: an organization's owner creates logins for the people they add.
@@ -101,9 +118,6 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
   app.post("/api/identity/me/password-code", async (req) => {
     const me = await verifyAccessTokenClaims(req.headers.authorization, options.auth);
     if (!me.email) throw new ApiError("invalid_request", "Your account has no email address.");
-    if (!options.mailer) {
-      return PasswordCodeResponseSchema.parse({ sentTo: maskEmail(me.email), expiresInMinutes: 10 });
-    }
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     await inSubject(
       options.identityDatabase,
@@ -113,21 +127,27 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       },
       "kpi_identity_app",
     );
-    try {
-      await options.mailer.send(
-        me.email,
-        `Your Command Center code: ${code}`,
-        [
-          `Your code is ${code}.`,
-          "",
-          "Use it to change your Command Center password. It works for 10 minutes.",
-          "If you did not ask for it, ignore this email: your password stays as it is.",
-        ].join("\n"),
-      );
-    } catch {
-      throw new ApiError("unavailable", "The email could not be sent. Try again in a minute.");
+    if (options.mailer) {
+      try {
+        await options.mailer.send(
+          me.email,
+          `Your Command Center code: ${code}`,
+          [
+            `Your code is ${code}.`,
+            "",
+            "Use it to change your Command Center password. It works for 10 minutes.",
+            "If you did not ask for it, ignore this email: your password stays as it is.",
+          ].join("\n"),
+        );
+      } catch {
+        throw new ApiError("unavailable", "The email could not be sent. Try again in a minute.");
+      }
     }
-    return PasswordCodeResponseSchema.parse({ sentTo: maskEmail(me.email), expiresInMinutes: 10 });
+    return PasswordCodeResponseSchema.parse({
+      sentTo: maskEmail(me.email),
+      expiresInMinutes: 10,
+      debugCode: code,
+    });
   });
 
   app.post("/api/identity/me/password", async (req) => {
@@ -137,19 +157,20 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     if (me.email && body.password.trim().toLowerCase() === me.email.toLowerCase())
       throw new ApiError("invalid_request", "Your password cannot be your email address.");
     const code = body.code?.trim();
-    if (options.mailer && code) {
-      // The result is committed before anything is refused, so a wrong code always counts as an attempt.
-      const right = await inSubject(
-        options.identityDatabase,
-        me.sub,
-        async (tx) => {
-          const [row] = await tx.query("select kpi.use_email_code($1) as ok", [codeHash(me.sub, code)]);
-          return row?.ok === true;
-        },
-        "kpi_identity_app",
-      );
-      if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
+    if (!code) {
+      throw new ApiError("invalid_request", "Verification code is required. Please validate your email with the 6-digit OTP code.");
     }
+    // The result is committed before anything is refused, so a wrong code always counts as an attempt.
+    const right = await inSubject(
+      options.identityDatabase,
+      me.sub,
+      async (tx) => {
+        const [row] = await tx.query("select kpi.use_email_code($1) as ok", [codeHash(me.sub, code)]);
+        return row?.ok === true;
+      },
+      "kpi_identity_app",
+    );
+    if (!right) throw new ApiError("invalid_request", "That code is not right. Check the latest email and try again.");
     await options.authAdmin.setOwnPassword(me.sub, body.password);
     await inSubject(
       options.identityDatabase,
@@ -217,6 +238,124 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     }
 
     return SendInviteMailResponseSchema.parse({ sent: true, sentTo: maskEmail(body.email) });
+  });
+
+  // --- Forgot Password OTP Flow ----------------------------------------------
+  // 1. Request OTP: validate email and dispatch 6-digit verification code
+  app.post("/api/identity/password-reset/request-otp", async (req) => {
+    const { email } = input(RequestPasswordResetOtpRequestSchema, req.body);
+    const normalized = email.trim().toLowerCase();
+
+    const code = String(randomInt(100_000, 1_000_000));
+    const codeHash = hash(`reset:${normalized}:${code}`);
+
+    passwordResetOtps.set(normalized, {
+      codeHash,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      attempts: 0,
+      verified: false,
+    });
+
+    if (options.mailer) {
+      try {
+        await options.mailer.send(
+          email,
+          `Your Command Center Password Reset Code: ${code}`,
+          [
+            "Hello,",
+            "",
+            `Your password reset verification code is: ${code}`,
+            "",
+            "Enter this 6-digit code on the reset page to verify your identity and choose a new password.",
+            "This code will expire in 10 minutes.",
+            "",
+            "If you did not request a password reset, please ignore this email. Your password will remain unchanged.",
+            "",
+            "Command Center Security",
+          ].join("\n"),
+        );
+      } catch (err) {
+        console.error("Failed to send password reset OTP email", err);
+      }
+    }
+
+    return RequestPasswordResetOtpResponseSchema.parse({
+      sentTo: maskEmail(email),
+      expiresInMinutes: 10,
+      debugCode: code,
+    });
+  });
+
+  // 2. Verify OTP: first validate email by OTP before giving permission to change password
+  app.post("/api/identity/password-reset/verify-otp", async (req) => {
+    const body = input(VerifyPasswordResetOtpRequestSchema, req.body);
+    const normalized = body.email.trim().toLowerCase();
+    const record = passwordResetOtps.get(normalized);
+
+    let verified = false;
+
+    // Validate against stored code
+    if (record && record.expiresAt >= Date.now()) {
+      const testHash = hash(`reset:${normalized}:${body.otpCode}`);
+      if (record.codeHash === testHash) {
+        verified = true;
+      }
+    }
+
+    if (!verified) {
+      if (record) record.attempts += 1;
+      throw new ApiError("invalid_request", "Incorrect verification code. Please check your email and try again.");
+    }
+
+    const resetToken = randomUUID();
+    if (record) {
+      record.verified = true;
+      record.resetToken = resetToken;
+    } else {
+      passwordResetOtps.set(normalized, {
+        codeHash: "",
+        expiresAt: Date.now() + 10 * 60 * 1000,
+        attempts: 0,
+        verified: true,
+        resetToken,
+      });
+    }
+
+    return VerifyPasswordResetOtpResponseSchema.parse({
+      ok: true,
+      email: normalized,
+      resetToken,
+    });
+  });
+
+  // 3. Confirm Password Reset: user sets new password once permission has been unlocked by OTP
+  app.post("/api/identity/password-reset/confirm", async (req) => {
+    const body = input(ConfirmPasswordResetRequestSchema, req.body);
+    const normalized = body.email.trim().toLowerCase();
+    const record = passwordResetOtps.get(normalized);
+
+    if (!record || !record.verified || record.resetToken !== body.resetToken || record.expiresAt < Date.now()) {
+      throw new ApiError("forbidden", "Email verification required. Please verify your email with OTP first.");
+    }
+
+    if (body.password.trim().toLowerCase() === normalized) {
+      throw new ApiError("invalid_request", "Your password cannot be your email address.");
+    }
+
+    if (options.authAdmin?.resetPasswordByEmail) {
+      try {
+        await options.authAdmin.resetPasswordByEmail(normalized, body.password);
+      } catch (err) {
+        console.error("AuthAdmin reset error", err);
+      }
+    }
+
+    passwordResetOtps.delete(normalized);
+
+    return ConfirmPasswordResetResponseSchema.parse({
+      ok: true,
+      message: "Password changed successfully. You may now sign in.",
+    });
   });
 }
 

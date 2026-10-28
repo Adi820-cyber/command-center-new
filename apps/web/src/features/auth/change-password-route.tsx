@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { MutationResponseSchema, PasswordCodeResponseSchema } from "@orbit/contracts";
-import { KeyRound, ShieldCheck, Mail, ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
-import { getAuthClient, getCurrentSession } from "../../lib/auth";
+import { KeyRound, ShieldCheck, ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
+import { getCurrentSession, signOut } from "../../lib/auth";
 import { request } from "../saas/client";
 
 /** True while the person still has a temporary password (server copy first). */
@@ -25,18 +25,24 @@ const field = (data: FormData, name: string) => {
 export function ChangePasswordRoute() {
   const [firstTime, setFirstTime] = useState(false);
   const [email, setEmail] = useState("");
-  const [step, setStep] = useState<"start" | "code" | "done">("start");
+  const [step, setStep] = useState<"code" | "done">("code");
   const [sentTo, setSentTo] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
+  const [debugOtp, setDebugOtp] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void getCurrentSession().then((session) => {
-      setFirstTime(mustChangePassword(session?.user));
-      setEmail(session?.user.email ?? "");
+      const isFirst = mustChangePassword(session?.user);
+      setFirstTime(isFirst);
+      const userEmail = session?.user.email ?? "";
+      setEmail(userEmail);
+      setSentTo(userEmail);
+      void sendCode();
     });
   }, []);
+
   useEffect(() => {
     if (cooldown <= 0) return undefined;
     const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
@@ -46,8 +52,7 @@ export function ChangePasswordRoute() {
   async function finish() {
     // End current session so the user must authenticate with their newly set password
     try {
-      const client = await getAuthClient();
-      await client.auth.signOut();
+      await signOut();
     } catch {
       // ignore
     }
@@ -65,11 +70,16 @@ export function ChangePasswordRoute() {
     try {
       const result = await request("/api/identity/me/password-code", PasswordCodeResponseSchema, {});
       setSentTo(result.sentTo);
-      setStep("code");
       setCooldown(60);
+      if (result.debugCode) {
+        setDebugOtp(result.debugCode);
+        setMessage(`Verification code dispatched to ${result.sentTo}. For testing, code is: ${result.debugCode}`);
+      } else {
+        setMessage(`A 6-digit verification code has been dispatched to ${result.sentTo}.`);
+      }
     } catch (error) {
       const text = error instanceof Error ? error.message : "";
-      setMessage(text || "The code could not be sent.");
+      setMessage(text || "The verification code could not be sent. Please click Resend Code.");
     } finally {
       setBusy(false);
     }
@@ -78,6 +88,11 @@ export function ChangePasswordRoute() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const codeVal = field(data, "code").trim();
+    if (!codeVal) {
+      setMessage("Please enter the 6-digit verification code sent to your email.");
+      return;
+    }
     const password = field(data, "password");
     if (password !== field(data, "confirmation")) {
       setMessage("Passwords do not match.");
@@ -86,8 +101,7 @@ export function ChangePasswordRoute() {
     setBusy(true);
     setMessage("");
     try {
-      const codeVal = field(data, "code").trim();
-      await request("/api/identity/me/password", MutationResponseSchema, { code: codeVal || undefined, password });
+      await request("/api/identity/me/password", MutationResponseSchema, { code: codeVal, password });
       await finish();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Password could not be changed.");
@@ -150,7 +164,7 @@ export function ChangePasswordRoute() {
           </h1>
           <p className="text-xs text-slate-500 mt-1 leading-relaxed">
             {firstTime
-              ? "Choose your permanent password to unlock your workspace."
+              ? "Validate your email address with the one-time code (OTP) and choose a permanent password."
               : "Update your credentials to maintain executive audit compliance."}
           </p>
         </div>
@@ -160,9 +174,9 @@ export function ChangePasswordRoute() {
             <div className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 ${
               step === "done"
                 ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : "bg-rose-50 text-rose-800 border border-rose-200"
+                : "bg-blue-50 text-blue-800 border border-blue-200"
             }`}>
-              {step === "done" ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0" />}
+              {step === "done" ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />}
               <span>{message}</span>
             </div>
           )}
@@ -186,40 +200,29 @@ export function ChangePasswordRoute() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </a>
             </div>
-          ) : step === "start" ? (
-            <form onSubmit={(event) => void submit(event)} className="space-y-4">
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Signed in as <strong className="text-slate-900 font-mono">{email || "your work account"}</strong>. Choose a new secure password.
-              </p>
-              {passwordFields}
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-              >
-                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Update Password & Unlock Workspace</span>
-              </button>
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void sendCode()}
-                  className="text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <Mail className="w-3 h-3" />
-                  <span>Verify via email code instead</span>
-                </button>
-              </div>
-            </form>
           ) : (
             <form onSubmit={(event) => void submit(event)} className="space-y-4">
               <div className="p-3 bg-blue-50/70 border border-blue-200/60 rounded-xl text-xs text-blue-900">
-                A verification code was dispatched to <strong>{sentTo}</strong> (valid for 10 minutes).
+                A verification code was dispatched to <strong>{sentTo || email}</strong> (valid for 10 minutes).
               </div>
+              {debugOtp && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs font-mono text-amber-900 flex items-center justify-between">
+                  <span>Testing Code: <strong>{debugOtp}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById("password-code") as HTMLInputElement;
+                      if (input) input.value = debugOtp;
+                    }}
+                    className="text-[10px] font-bold uppercase bg-amber-200 hover:bg-amber-300 px-2 py-0.5 rounded cursor-pointer"
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
+              )}
               <div>
                 <label htmlFor="password-code" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  6-digit Verification Code
+                  6-digit Email Verification Code (OTP) *
                 </label>
                 <input
                   id="password-code"
@@ -228,6 +231,7 @@ export function ChangePasswordRoute() {
                   autoComplete="one-time-code"
                   pattern="\d{6}"
                   maxLength={6}
+                  required
                   placeholder="123456"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono tracking-widest text-center focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
@@ -239,7 +243,7 @@ export function ChangePasswordRoute() {
                 className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Update Password</span>
+                <span>Validate Email & Save Permanent Password</span>
               </button>
               <button
                 type="button"

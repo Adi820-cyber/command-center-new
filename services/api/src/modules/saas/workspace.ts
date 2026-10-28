@@ -20,10 +20,17 @@ export async function loadWorkspace(
     'select id,name,kind,parent_id as "parentId" from kpi.units where tenant_id=$1 order by name',
     [tenant],
   );
-  const measures = await tx.query(
-    'select key,name,unit,description,rolls_up as "rollsUp" from kpi.measures where tenant_id=$1 order by name',
+  const rawMeasures = await tx.query(
+    'select key,name,unit,coalesce(description, \'\') as description,coalesce(rolls_up, 1) as "rollsUp" from kpi.measures where tenant_id=$1 order by name',
     [tenant],
   );
+  const measures = rawMeasures.map((m: any) => ({
+    key: String(m.key),
+    name: String(m.name),
+    unit: String(m.unit),
+    description: String(m.description ?? ''),
+    rollsUp: m.rollsUp === true || m.rollsUp === 1 || m.rollsUp === '1',
+  }));
   const submissionMeasures = await tx.query(
     `select distinct s.measure_key
      from kpi.units u

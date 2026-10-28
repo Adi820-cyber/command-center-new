@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Shared Zod schemas and inferred types for every API payload boundary",
   "engines": {
-    "node": "22.x"
+    "node": ">=22"
   },
   "main": "./src/index.ts",
   "scripts": {

@@ -3,29 +3,46 @@ import { createRemoteJWKSet } from 'jose';
 import { buildApp } from './build.ts';
 import { loadConfig } from './config.ts';
 import { createDatabase } from './db/client.ts';
+import { createMySqlDatabase } from './db/mysql-client.ts';
 import { createAuthAdmin } from './modules/saas/auth-admin.ts';
+import { createMySqlAuthAdmin } from './modules/saas/mysql-auth.ts';
 import { createMailer } from './modules/saas/mail.ts';
 
-// Vercel entrypoint (src/app.ts). The app is built in ./build.ts. Vercel's
-// Fastify detection needs this file itself to import fastify.
+// Vercel entrypoint (src/app.ts). The app is built in ./build.ts.
 const config = loadConfig();
 
-// No top-level await: Vercel's runtime may load this module with require(),
-// which Node rejects for ES modules that use top-level await.
+const mysqlDb = config.mysql ? createMySqlDatabase(config.mysql) : undefined;
+const jwtSecret = new TextEncoder().encode(config.jwtSecret);
+
+const kpiDb = mysqlDb ?? (config.kpiDatabaseUrl ? createDatabase({ url: config.kpiDatabaseUrl }) : undefined);
+const controlDb = mysqlDb ?? (config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined);
+const identityDb = mysqlDb ?? (config.identityDatabaseUrl ? createDatabase({ url: config.identityDatabaseUrl }) : undefined);
+
+const authAdmin = mysqlDb
+  ? createMySqlAuthAdmin(mysqlDb)
+  : config.supabaseSecretKey
+    ? createAuthAdmin({ supabaseUrl: config.supabaseUrl, secretKey: config.supabaseSecretKey })
+    : undefined;
+
+// No top-level await: Vercel's runtime may load this module with require()
 buildApp({
   logger: true,
-  database: config.kpiDatabaseUrl ? createDatabase({ url: config.kpiDatabaseUrl }) : undefined,
-  controlDatabase: config.controlDatabaseUrl ? createDatabase({ url: config.controlDatabaseUrl }) : undefined,
-  identityDatabase: config.identityDatabaseUrl ? createDatabase({ url: config.identityDatabaseUrl }) : undefined,
+  database: kpiDb,
+  controlDatabase: controlDb,
+  identityDatabase: identityDb,
   askProviders: config.askProviders,
-  mailer: config.mail ? createMailer(config.mail) : undefined,
+  mailer: config.mail
+    ? createMailer(config.mail)
+    : {
+        async send(to: string, subject: string, text: string) {
+          console.log(`\n📬 [EMAIL DISPATCHED]\nTo: ${to}\nSubject: ${subject}\n\n${text}\n----------------------------------------\n`);
+        },
+      },
   enforcePasswordChange: config.enforcePasswordChange,
-  authAdmin: config.supabaseSecretKey
-    ? createAuthAdmin({ supabaseUrl: config.supabaseUrl, secretKey: config.supabaseSecretKey })
-    : undefined,
+  authAdmin,
   allowedOrigins: config.allowedOrigins,
   auth: {
-    getKey: createRemoteJWKSet(config.jwksUrl),
+    getKey: mysqlDb ? jwtSecret : createRemoteJWKSet(config.jwksUrl),
     issuer: config.issuer,
     audience: config.audience,
     // The generic routes resolve tenant membership through RLS after JWT verification.

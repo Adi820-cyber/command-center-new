@@ -98,8 +98,10 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 /** `2026-09-01`..`2026-09-30` becomes `Sep 2026`; other spans show their dates. */
 export function periodLabel(start: string, end: string): string {
-  const [sy = 0, sm = 1, sd = 1] = start.split("-").map(Number);
-  const [ey = 0, em = 1, ed = 1] = end.split("-").map(Number);
+  const cleanStart = String(start).slice(0, 10);
+  const cleanEnd = String(end).slice(0, 10);
+  const [sy = 0, sm = 1, sd = 1] = cleanStart.split("-").map(Number);
+  const [ey = 0, em = 1, ed = 1] = cleanEnd.split("-").map(Number);
   const lastDay = new Date(Date.UTC(ey, em, 0)).getUTCDate();
   if (sd === 1 && ed === lastDay) {
     if (sy === ey && sm === em) return `${MONTHS[sm - 1]} ${sy}`;

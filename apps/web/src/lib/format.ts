@@ -24,12 +24,15 @@ export function formatDateTime(value: string) {
 }
 
 export function formatDay(value: string) {
-  return formatDate(`${value}T00:00:00Z`, { month: "short", day: "numeric", year: "numeric" });
+  const d = String(value).slice(0, 10);
+  return formatDate(`${d}T00:00:00Z`, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function periodLabel(period: Period) {
-  const start = `${period.start}T00:00:00Z`;
-  const end = `${period.end}T00:00:00Z`;
+  const s = String(period.start).slice(0, 10);
+  const e = String(period.end).slice(0, 10);
+  const start = `${s}T00:00:00Z`;
+  const end = `${e}T00:00:00Z`;
 
   if (period.cadence === "month") {
     return formatDate(start, { month: "long", year: "numeric" });
@@ -39,7 +42,8 @@ export function periodLabel(period: Period) {
 }
 
 export function shortPeriodLabel(period: Period) {
-  const start = `${period.start}T00:00:00Z`;
+  const s = String(period.start).slice(0, 10);
+  const start = `${s}T00:00:00Z`;
 
   if (period.cadence === "month") {
     return formatDate(start, { month: "short", year: "2-digit" });

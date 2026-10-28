@@ -34,6 +34,8 @@ import { OrgHub } from "./org-hub";
 import { initialOf, roleLabel, viewingAs } from "./identity";
 import { SaaSOrganizationsManager } from "../operator/saas-orgs-manager";
 import { SaaSRevenueDashboard, type ControlOrg } from "../operator/saas-revenue-dashboard";
+import { UserProfileModal, loadStoredProfile } from "./user-profile-modal";
+import { Settings } from "lucide-react";
 import "./v2.css";
 type Tab =
   | "Dashboard"
@@ -48,13 +50,11 @@ type Tab =
 const OPERATOR_TABS: { tab: Tab; label: string; icon: string }[] = [
   { tab: "Dashboard", label: "Platform Revenues & KPIs", icon: "◫" },
   { tab: "SaaS Orgs", label: "SaaS All Organizations", icon: "◈" },
-  { tab: "Ask", label: "Platform AI Assistant", icon: "✦" },
   { tab: "Activity", label: "Platform Activity & Audit", icon: "◷" },
 ];
 
 const CUSTOMER_TABS: { tab: Tab; label: string; icon: string }[] = [
   { tab: "Dashboard", label: "Dashboard", icon: "◫" },
-  { tab: "Ask", label: "Ask", icon: "✦" },
   { tab: "Data & approvals", label: "Data & approvals", icon: "⇅" },
   { tab: "KPI library", label: "KPI library", icon: "◇" },
   { tab: "Actions", label: "Actions", icon: "☑" },
@@ -93,6 +93,8 @@ export function SaasRoute() {
   const [askSeed, setAskSeed] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [profileName, setProfileName] = useState("");
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isOperator, setIsOperator] = useState(false);
   const reload = useCallback(async () => {
     if (!tenant) return;
@@ -119,6 +121,10 @@ export function SaasRoute() {
       if (!active) return;
       const userEmail = session?.user.email ?? "";
       setEmail(userEmail);
+      const stored = loadStoredProfile(userEmail);
+      const metaName = (session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name) as string | undefined;
+      if (metaName) setProfileName(metaName);
+      else if (stored.fullName) setProfileName(stored.fullName);
       if (mustChangePassword(session?.user)) window.location.replace("/change-password");
     });
 
@@ -303,15 +309,28 @@ export function SaasRoute() {
         </nav>
 
         <div className="saas-sidebar-footer">
-          <div className="whoami" aria-label="Signed in as">
-            <span className="whoami-avatar" aria-hidden="true">{initialOf(email)}</span>
+          <button
+            type="button"
+            className="whoami"
+            onClick={() => setProfileModalOpen(true)}
+            aria-label="Manage profile and account details"
+            title="Click to update details and password"
+          >
+            <span className="whoami-avatar" aria-hidden="true">{initialOf(profileName || email)}</span>
             <span className="whoami-text">
-              <strong title={email}>{email || "Signed in"}</strong>
+              <strong title={email}>{profileName || email || "Signed in"}</strong>
               <small>{isOperator ? "Platform Operator (Super Admin)" : (roleLabel(workspace?.me) || (closed ? closed.status : ""))}</small>
               <small className="whoami-org">{isOperator ? "SaaS Platform Provider" : (workspace?.organization.name ?? closed?.name ?? "")}</small>
             </span>
-          </div>
-          <a href="/change-password">Account security</a>
+            <Settings className="w-4 h-4 whoami-edit-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            style={{ textAlign: "center", fontSize: 12, padding: "7px 12px", background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
+          >
+            Account & Security Settings
+          </button>
           <button
             onClick={() =>
               void signOut().then(() => window.location.assign("/login"))
@@ -394,7 +413,7 @@ export function SaasRoute() {
                   onGoToOrgs={() => setTab("SaaS Orgs")}
                   onAskOperator={(q) => {
                     setAskSeed(q);
-                    setTab("Ask");
+                    setAssistantOpen(true);
                   }}
                 />
               )}
@@ -471,7 +490,7 @@ export function SaasRoute() {
                       change={change}
                       ask={(q) => {
                         setAskSeed(q);
-                        setTab("Ask");
+                        setAssistantOpen(true);
                       }}
                       goto={setTab}
                     />
@@ -492,19 +511,16 @@ export function SaasRoute() {
                       />
                     </>
                   )}
-                  {tab === "Organization" &&
-                    (workspace.organization.owner ? (
-                      <OrgHub
-                        workspace={workspace}
-                        change={change}
-                        goto={setTab}
-                        tenant={tenant}
-                        reload={reload}
-                        governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
-                      />
-                    ) : (
-                      <Organization workspace={workspace} change={change} />
-                    ))}
+                  {tab === "Organization" && (
+                    <OrgHub
+                      workspace={workspace}
+                      change={change}
+                      goto={setTab}
+                      tenant={tenant}
+                      reload={reload}
+                      governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                    />
+                  )}
                   {tab === "Actions" && (
                     <Actions workspace={workspace} change={change} />
                   )}
@@ -531,7 +547,7 @@ export function SaasRoute() {
             aria-controls="workspace-assistant"
             onClick={() => setAssistantOpen((open) => !open)}
           >
-            {assistantOpen ? "Close assistant" : "Ask Platform AI"}
+            {assistantOpen ? "Close assistant" : "✦ Ask Platform AI"}
           </button>
           {assistantOpen && (
             <aside id="workspace-assistant" className="assistant-drawer" aria-label="Platform metadata assistant">
@@ -551,7 +567,7 @@ export function SaasRoute() {
           )}
         </>
       ) : (
-        workspace && tab !== "Ask" && (
+        workspace && (
           <>
             <button
               type="button"
@@ -560,16 +576,25 @@ export function SaasRoute() {
               aria-controls="workspace-assistant"
               onClick={() => setAssistantOpen((open) => !open)}
             >
-              {assistantOpen ? "Close assistant" : "Ask AI"}
+              {assistantOpen ? "Close assistant" : "✦ Ask AI"}
             </button>
             {assistantOpen && (
               <aside id="workspace-assistant" className="assistant-drawer" aria-label="Role-scoped data assistant">
-                <AskPanel tenant={tenant} compact />
+                <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} compact />
               </aside>
             )}
           </>
         )
       )}
+
+      <UserProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        email={email}
+        workspace={workspace}
+        isOperator={isOperator}
+        onProfileUpdated={(name) => setProfileName(name)}
+      />
     </div>
   );
 }
@@ -1059,191 +1084,7 @@ function DataEntry({
     </>
   );
 }
-function Organization({ workspace: w, change }: Props) {
-  return (
-    <>
-      <div className="saas-columns">
-        <section className="saas-card">
-          <h2>Organization structure</h2>
-          <ul>
-            {w.units.map((u) => (
-              <li key={u.id}>
-                {u.name}{" "}
-                <small>
-                  · {u.kind}
-                  {u.parentId
-                    ? ` · under ${w.units.find((p) => p.id === u.parentId)?.name}`
-                    : ""}
-                </small>
-              </li>
-            ))}
-          </ul>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              void change("/units", {
-                name: text(f, "name"),
-                kind: text(f, "kind"),
-                parentId: text(f, "parentId") || null,
-              });
-            }}
-          >
-            <Field title="Unit name">
-              <input name="name" required maxLength={120} />
-            </Field>
-            <Field title="Unit type">
-              <input
-                name="kind"
-                placeholder="Branch, team, department…"
-                required
-                maxLength={60}
-              />
-            </Field>
-            <Field title="Parent">
-              <select name="parentId">
-                {w.units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <button>Add unit</button>
-          </form>
-        </section>
-        {w.organization.owner && (
-          <section className="saas-card">
-            <h2>Create a business role</h2>
-            <p>
-              Role names do not grant authority. Choose explicit capabilities
-              and a unit scope. This form grants all KPIs within that scope.
-            </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                void change("/roles", {
-                  name: text(f, "name"),
-                  grants: f
-                    .getAll("capability")
-                    .flatMap((capability) => {
-                      const selected=f.getAll('kpis');
-                      const ids=(capability==='view'||capability==='act')&&selected.length?selected:[null];
-                      return ids.map(kpiId=>({capability,unitId:capability==='configure'?null:text(f,'unitId')||null,kpiId}));
-                    }),
-                });
-              }}
-            >
-              <Field title="Role name">
-                <input name="name" required maxLength={120} />
-              </Field>
-              <Field title="Scope">
-                <select name="unitId">
-                  <option value="">Entire organization</option>
-                  {w.units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} and descendants
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {["view", "submit", "approve", "act", "configure"].map((c) => (
-                <label className="saas-checkbox" key={c}>
-                  <input type="checkbox" name="capability" value={c} />
-                  {c === "configure"
-                    ? "Configure definitions and units (organization-wide)"
-                    : c}
-                </label>
-              ))}
-              <Field title="Visible/actionable KPIs (optional)">
-                <select name="kpis" multiple size={Math.min(5,Math.max(2,w.kpis.length))}>
-                  {w.kpis.filter(k=>k.state==='active').map(k=><option key={k.id} value={k.id}>{k.name} (all versions)</option>)}
-                </select>
-              </Field>
-              <p>Leave KPI selection empty to include all KPIs in scope. Submit and approve apply to aggregate input data for the selected unit.</p>
-              <button>Create role</button>
-            </form>
-          </section>
-        )}
-      </div>
-      {w.organization.owner && (
-        <section className="saas-card">
-          <h2>Invite a team member</h2>
-          <p>
-            Choose one or more roles. The recipient must sign in with this
-            verified email before accepting the private invitation.
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              void change("/invitations", {
-                email: text(f, "email"),
-                roleIds: f.getAll("roles"),
-              });
-            }}
-          >
-            <Field title="Work email">
-              <input name="email" type="email" required />
-            </Field>
-            {w.roles.map((r) => (
-              <label className="saas-checkbox" key={r.id}>
-                <input name="roles" type="checkbox" value={r.id} />
-                {r.name}
-              </label>
-            ))}
-            <button disabled={!w.roles.length}>
-              Create private invitation
-            </button>
-          </form>
-        </section>
-      )}
-      <section className="saas-card">
-        <h2>Members</h2>
-        <p>
-          There is no fixed number of users or business roles. Member
-          identifiers are shown until profile names are configured.
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Access</th>
-              <th>Status</th>
-              <th>Manage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {w.members.map((m) => (
-              <tr key={m.id}>
-                <td>{m.subject === w.subject ? "You" : m.displayName}</td>
-                <td>{m.owner ? "Owner" : "Assigned roles"}</td>
-                <td>{m.active ? "Active" : "Revoked"}</td>
-                <td>
-                  {w.organization.owner && !m.owner && m.active && (
-                    <button
-                      className="secondary"
-                      onClick={() => void change(`/members/${m.id}/revoke`, {})}
-                    >
-                      Revoke access
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {w.organization.owner&&<form onSubmit={e=>{
-          e.preventDefault();const f=new FormData(e.currentTarget);
-          void change(`/members/${text(f,'member')}/roles`,{roleIds:f.getAll('roles')});
-        }}><h3>Replace a member’s role assignments</h3><Field title="Member"><select name="member" required>{w.members.filter(m=>m.active&&!m.owner).map(m=><option key={m.id} value={m.id}>{m.displayName}</option>)}</select></Field>
-          {w.roles.map(r=><label className="saas-checkbox" key={r.id}><input type="checkbox" name="roles" value={r.id}/>{r.name}</label>)}
-          <p>This replaces all existing assignments. Selecting none removes all role capabilities.</p><button disabled={!w.members.some(m=>m.active&&!m.owner)}>Replace assignments</button></form>}
-      </section>
-    </>
-  );
-}
+
 function Actions({ workspace: w, change }: Props) {
   const [evidence,setEvidence]=useState<SaasResult>();const [evidenceError,setEvidenceError]=useState('');
   return (

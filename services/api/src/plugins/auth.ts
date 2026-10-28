@@ -33,7 +33,7 @@ export interface MembershipSource {
 }
 
 export interface AuthOptions {
-  getKey: JWTVerifyGetKey;
+  getKey: JWTVerifyGetKey | Uint8Array;
   issuer: string;
   audience: string;
   memberships: MembershipSource;
@@ -41,11 +41,11 @@ export interface AuthOptions {
   surface?: ApiSurface;
 }
 
-/** Supabase signs user tokens asymmetrically; HS256 and `none` are never accepted. */
-const ALLOWED_ALGORITHMS = ['ES256', 'RS256'];
+/** Signs tokens with HS256 for MySQL or ES256/RS256 for asymmetric setups. */
+const ALLOWED_ALGORITHMS = ['HS256', 'ES256', 'RS256'];
 
 const SupabaseClaimsSchema = z.object({
-  sub: z.uuid(),
+  sub: z.string().uuid(),
   role: z.literal('authenticated'),
   is_anonymous: z.literal(false).optional(),
 });
@@ -87,7 +87,7 @@ export async function verifyAccessTokenClaims(
 
   let payload: unknown;
   try {
-    ({ payload } = await jwtVerify(token, options.getKey, {
+    ({ payload } = await jwtVerify(token, options.getKey as any, {
       issuer: options.issuer,
       audience: options.audience,
       algorithms: ALLOWED_ALGORITHMS,

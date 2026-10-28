@@ -41,6 +41,43 @@ export const VerifyRoleOtpRequestSchema = z.strictObject({
 });
 export type VerifyRoleOtpRequest = z.infer<typeof VerifyRoleOtpRequestSchema>;
 
+export const RequestPasswordResetOtpRequestSchema = z.strictObject({
+  email: z.string().trim().email(),
+});
+export type RequestPasswordResetOtpRequest = z.infer<typeof RequestPasswordResetOtpRequestSchema>;
+
+export const RequestPasswordResetOtpResponseSchema = z.strictObject({
+  sentTo: z.string(),
+  expiresInMinutes: z.number(),
+  debugCode: z.string().optional(),
+});
+export type RequestPasswordResetOtpResponse = z.infer<typeof RequestPasswordResetOtpResponseSchema>;
+
+export const VerifyPasswordResetOtpRequestSchema = z.strictObject({
+  email: z.string().trim().email(),
+  otpCode: z.string().trim().length(6),
+});
+export type VerifyPasswordResetOtpRequest = z.infer<typeof VerifyPasswordResetOtpRequestSchema>;
+
+export const VerifyPasswordResetOtpResponseSchema = z.strictObject({
+  ok: z.boolean(),
+  email: z.string(),
+  resetToken: z.string(),
+});
+export type VerifyPasswordResetOtpResponse = z.infer<typeof VerifyPasswordResetOtpResponseSchema>;
+
+export const ConfirmPasswordResetRequestSchema = z.strictObject({
+  email: z.string().trim().email(),
+  resetToken: z.string(),
+  password: z.string().min(8).max(72),
+});
+export type ConfirmPasswordResetRequest = z.infer<typeof ConfirmPasswordResetRequestSchema>;
+
+export const ConfirmPasswordResetResponseSchema = z.strictObject({
+  ok: z.boolean(),
+  message: z.string(),
+});
+export type ConfirmPasswordResetResponse = z.infer<typeof ConfirmPasswordResetResponseSchema>;
 
 export const RenameOrganizationRequestSchema = z.strictObject({
   name: z.string().trim().min(1).max(120),

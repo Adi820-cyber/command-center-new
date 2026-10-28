@@ -344,10 +344,10 @@
   gap: 16px;
   margin-top: 18px;
 }
-.saas-shell input,
+.saas-shell input:not([type="checkbox"]):not([type="radio"]),
 .saas-shell select,
 .saas-shell textarea,
-.saas-auth input {
+.saas-auth input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -358,6 +358,21 @@
   color: #0f172a;
   min-height: 40px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.saas-shell input[type="checkbox"],
+.saas-shell input[type="radio"],
+.saas-auth input[type="checkbox"],
+.saas-auth input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  min-width: 16px;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  accent-color: #2563eb;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 .saas-shell input:focus,
 .saas-shell select:focus,

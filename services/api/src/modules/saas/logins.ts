@@ -64,7 +64,7 @@ export async function prepareLogins(people: readonly Person[], admin: AuthAdmin)
     for (const person of people) {
       const email = person.email.trim();
       const password = person.password?.trim() || temporaryPassword();
-      const mustChange = false;
+      const mustChange = true;
       const result = await admin.createUser(email, password, mustChange);
       if (result.status === "created") {
         created.push(result.id);

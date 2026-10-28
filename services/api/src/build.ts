@@ -9,6 +9,7 @@ import type { ModelProvider } from "./modules/ask/narrator.ts";
 import type { AuthAdmin } from "./modules/saas/auth-admin.ts";
 import type { Mailer } from "./modules/saas/mail.ts";
 import { registerSaasRoutes } from "./modules/saas/routes.ts";
+import { registerMySqlAuthRoutes } from "./modules/saas/mysql-auth.ts";
 
 export interface AppOptions {
   auth: AuthOptions;
@@ -77,6 +78,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/api/health", async () => ({ status: "ok" }));
+  if (options.database && options.auth.getKey instanceof Uint8Array) {
+    await registerMySqlAuthRoutes(app, {
+      database: options.database,
+      jwtSecret: options.auth.getKey,
+      issuer: options.auth.issuer,
+      audience: options.auth.audience,
+    });
+  }
   await registerSaasRoutes(app, options);
   return app;
 }

@@ -17,8 +17,14 @@ const optional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
 
 const EnvSchema = z.object({
-  SUPABASE_URL: z.url(),
-  SUPABASE_JWKS_URL: optional(z.url()),
+  SUPABASE_URL: optional(z.string().url()),
+  SUPABASE_JWKS_URL: optional(z.string().url()),
+  MYSQL_HOST: optional(z.string().min(1)),
+  MYSQL_PORT: optional(z.coerce.number().int().positive().default(3306)),
+  MYSQL_USER: optional(z.string().min(1)),
+  MYSQL_PASSWORD: optional(z.string()),
+  MYSQL_DATABASE: optional(z.string().min(1).default('orbit_kpi')),
+  JWT_SECRET: optional(z.string().min(1)),
   DATABASE_URL: optional(z.string().min(1)),
   KPI_DATABASE_URL: optional(z.string().min(1)),
   CONTROL_DATABASE_URL: optional(z.string().min(1)),
@@ -53,9 +59,27 @@ const EnvSchema = z.object({
   OPENROUTER_MODEL: optional(z.string().min(1)),
   /** Knowledge-base embeddings (ADR 0019). Must produce 1024 dimensions; uses the OpenRouter key. */
   EMBEDDING_MODEL: z.string().min(1).default(DEFAULT_EMBEDDING_MODEL),
+}).superRefine((data, ctx) => {
+  if (!data.MYSQL_HOST && !data.SUPABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'SUPABASE_URL is required',
+      path: ['SUPABASE_URL'],
+    });
+  }
 });
 
+export interface MySqlConfig {
+  host: string;
+  port: number;
+  user: string;
+  password?: string;
+  database: string;
+}
+
 export interface ApiConfig {
+  mysql?: MySqlConfig;
+  jwtSecret?: string;
   issuer: string;
   audience: string;
   jwksUrl: URL;
@@ -151,14 +175,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     // The customer API reads customer data. It must never hold a key that can create or alter logins.
     throw new Error('SUPABASE_SECRET_KEY belongs only on the control API, not on a process with KPI_DATABASE_URL.');
   }
-  const base = vars.SUPABASE_URL.replace(/\/+$/, '');
+  const base = (vars.SUPABASE_URL ?? 'https://orbit.internal').replace(/\/+$/, '');
+
+  const mysqlConfig = vars.MYSQL_HOST
+    ? {
+        host: vars.MYSQL_HOST,
+        port: vars.MYSQL_PORT ?? 3306,
+        user: vars.MYSQL_USER ?? 'root',
+        password: vars.MYSQL_PASSWORD,
+        database: vars.MYSQL_DATABASE ?? 'orbit_kpi',
+      }
+    : undefined;
 
   const liveSources = parseLiveSources(vars.ORBIT_LIVE_SOURCES);
-  if (!vars.DATABASE_URL && DATABASE_SOURCES.some((source) => liveSources.has(source))) {
+  if (!mysqlConfig && !vars.DATABASE_URL && DATABASE_SOURCES.some((source) => liveSources.has(source))) {
     throw new Error('ORBIT_LIVE_SOURCES names a database source but DATABASE_URL is not set');
   }
 
   return {
+    mysql: mysqlConfig,
+    jwtSecret: vars.JWT_SECRET || 'orbit-jwt-secret-secure-key-2026-auth',
     kpiDatabaseUrl: vars.KPI_DATABASE_URL,
     controlDatabaseUrl: vars.CONTROL_DATABASE_URL,
     identityDatabaseUrl: vars.IDENTITY_DATABASE_URL,
@@ -166,7 +202,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     mail: mailConfig(vars),
     supabaseSecretKey: vars.SUPABASE_SECRET_KEY,
     supabaseUrl: base,
-    issuer: `${base}/auth/v1`,
+    issuer: mysqlConfig ? 'https://orbit.internal/auth/v1' : `${base}/auth/v1`,
     audience: 'authenticated',
     jwksUrl: new URL(vars.SUPABASE_JWKS_URL ?? `${base}/auth/v1/.well-known/jwks.json`),
     databaseUrl: vars.DATABASE_URL,

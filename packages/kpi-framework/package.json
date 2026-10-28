@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Typed, versioned import of the workbook: 14 roles, 29 definition families, 109 assignments. Generated, never hand-edited.",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "main": "./src/index.ts",
   "scripts": {

@@ -18,6 +18,8 @@ export interface AuthAdmin {
   resetPassword(id: string, password: string, mustChangePassword?: boolean): Promise<void>;
   /** Sets the person's own new password and clears the must-change flag. */
   setOwnPassword(id: string, password: string): Promise<void>;
+  /** Finds user by email, sets new password, and clears must-change flag. */
+  resetPasswordByEmail?(email: string, password: string): Promise<boolean>;
   /** Best-effort removal, used to undo logins when the rest of a provisioning step fails. */
   deleteUser(id: string): Promise<void>;
 }
@@ -125,6 +127,15 @@ export function createAuthAdmin(options: AuthAdminOptions): AuthAdmin {
 
     async setOwnPassword(id, password) {
       await update(id, { password, user_metadata: { must_change_password: false }, app_metadata: { must_change_password: false } }, "change the password");
+    },
+
+    async resetPasswordByEmail(email, password) {
+      const user = await findUser(email);
+      if (user?.id) {
+        await update(user.id, { password, user_metadata: { must_change_password: false }, app_metadata: { must_change_password: false } }, "reset the password");
+        return true;
+      }
+      return false;
     },
 
     async deleteUser(id) {

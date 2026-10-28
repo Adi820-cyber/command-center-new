@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Command Center frontend - React 19 and Vite SPA",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "vite",

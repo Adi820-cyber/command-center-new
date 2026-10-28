@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Standard KPI catalog: measures, KPI definitions with formulas, and role templates. Seeded into the database; never edited at runtime.",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "main": "./src/index.ts",
   "scripts": {

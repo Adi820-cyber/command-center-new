@@ -15,6 +15,7 @@ import {
   getCurrentSession,
   signInWithPassword,
 } from "../../lib/auth";
+import { mustChangePassword } from "./change-password-route";
 import "./login.css";
 
 interface LoginFieldErrors {
@@ -162,6 +163,11 @@ export async function loginAction({ request }: ActionFunctionArgs) {
     );
   }
 
+  const session = await getCurrentSession();
+  if (mustChangePassword(session?.user)) {
+    return redirect("/change-password");
+  }
+
   const returnTo = getSafeReturnPath(new URL(request.url).searchParams.get("returnTo"));
   return redirect(returnTo);
 }
@@ -178,6 +184,7 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react";
+import { ForgotPasswordModal } from "./forgot-password-modal";
 
 export function LoginRoute() {
   const [searchParams] = useSearchParams();
@@ -188,7 +195,8 @@ export function LoginRoute() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [email, setEmail] = useState(actionData?.email ?? emailParam);
   const [password, setPassword] = useState("");
-  const [activeTier, setActiveTier] = useState<string | null>(null);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [forgotSuccessMessage, setForgotSuccessMessage] = useState("");
   const isSubmitting = navigation.state === "submitting";
 
   return (
@@ -330,7 +338,7 @@ export function LoginRoute() {
           </header>
 
           {/* Password Reset Success Notice */}
-          {resetSuccess && (
+          {(resetSuccess || forgotSuccessMessage) && (
             <output
               className="block mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3 shadow-xs animate-in fade-in"
             >
@@ -342,7 +350,7 @@ export function LoginRoute() {
                   Password Updated Successfully
                 </div>
                 <div className="text-xs text-emerald-700 leading-relaxed">
-                  Your password has been changed. Please sign in with your new credentials to continue.
+                  {forgotSuccessMessage || "Your password has been changed. Please sign in with your new credentials to continue."}
                 </div>
               </div>
             </output>
@@ -377,7 +385,7 @@ export function LoginRoute() {
                   type="text"
                   autoComplete="username"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setActiveTier(null); }}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@organization.org"
                   required
                   spellCheck={false}
@@ -405,6 +413,16 @@ export function LoginRoute() {
                 >
                   Password
                 </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotSuccessMessage("");
+                    setForgotPasswordOpen(true);
+                  }}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer"
+                >
+                  Forgot password?
+                </button>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -416,7 +434,7 @@ export function LoginRoute() {
                   type={passwordVisible ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setActiveTier(null); }}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
                   required
                   className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-sm font-medium transition-all focus:outline-none ${
@@ -460,73 +478,6 @@ export function LoginRoute() {
             </button>
           </Form>
 
-          {/* Quick-Switch Demo Credential Helper */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Quick-Switch Credential Helper
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium">Click to fill credentials</span>
-            </div>
-
-            <div className="space-y-2">
-              {[
-                {
-                  id: "operator",
-                  tier: "Tier 1: Platform Operator",
-                  email: "ghanshamrn.a27@gmail.com",
-                  pass: "Ghansham@123",
-                  pill: "bg-blue-50 text-blue-700 border-blue-200",
-                  desc: "Super Admin · Tenant provisioning and privacy-safe AI",
-                },
-                {
-                  id: "owner",
-                  tier: "Tier 2: Organization Owner",
-                  email: "owner@kestrion.demo",
-                  pass: "Password@123",
-                  pill: "bg-indigo-50 text-indigo-700 border-indigo-200",
-                  desc: "Tenant Admin · Role studio, custom KPIs and people",
-                },
-                {
-                  id: "role_person",
-                  tier: "Tier 3: Role Person",
-                  email: "hospital@kestrion.demo",
-                  pass: "Password@123",
-                  pill: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                  desc: "Employee · Scoped dashboard, check-ins and restricted AI",
-                },
-              ].map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => {
-                    setEmail(preset.email);
-                    setPassword(preset.pass);
-                    setActiveTier(preset.id);
-                  }}
-                  className={`w-full text-left p-2.5 rounded-xl border transition-all text-xs flex items-center justify-between cursor-pointer ${
-                    activeTier === preset.id
-                      ? "border-blue-500 bg-blue-50/50 shadow-sm"
-                      : "border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${preset.pill}`}>
-                        {preset.tier}
-                      </span>
-                      <span className="font-semibold text-slate-900 truncate">{preset.email}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 truncate">{preset.desc}</p>
-                  </div>
-                  <span className="text-[11px] font-bold text-blue-600 shrink-0">
-                    {activeTier === preset.id ? "Filled ✓" : "Use"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Workspace info & governance footer */}
           <div className="mt-8 pt-6 border-t border-slate-100 space-y-3">
             <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -539,6 +490,17 @@ export function LoginRoute() {
           </div>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
+        initialEmail={email}
+        onSuccess={(userEmail, msg) => {
+          setEmail(userEmail);
+          setForgotSuccessMessage(msg);
+          setPassword("");
+        }}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Deterministic synthetic data generator + invariant checks",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "main": "./src/index.ts",
   "scripts": {

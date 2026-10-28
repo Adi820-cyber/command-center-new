@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Command Center design tokens, visual primitives, and chart wrappers",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { jwtVerify } from "jose";
 import { z } from "zod";
@@ -299,6 +299,72 @@ export async function registerSaasRoutes(
       return { ok: true };
     }),
   );
+  app.post("/api/saas/:tenantId/kpis/:id/customize", async (req) =>
+    tenant(req, async (tx, t, sub) => {
+      await permit(tx, t, "configure");
+      const { id } = input(z.object({ id: uuid }), req.params);
+      const body = input(
+        z.object({
+          name: z.string().trim().min(1).max(120).optional(),
+          description: z.string().trim().max(2000).optional(),
+          unit: z.string().trim().min(1).max(32).optional(),
+          target: z.number().nullable().optional(),
+          direction: z.enum(["higher", "lower", "neutral"]).optional(),
+          domain: z.string().trim().max(80).optional(),
+        }),
+        req.body,
+      );
+      await tx.query(
+        `update kpi_definitions
+         set name = coalesce($1, name),
+             description = coalesce($2, description),
+             unit = coalesce($3, unit),
+             target = case when $4 is not null then $4 else target end,
+             direction = coalesce($5, direction),
+             domain = coalesce($6, domain)
+         where tenant_id=$7 and id=$8`,
+        [body.name ?? null, body.description ?? null, body.unit ?? null, body.target !== undefined ? body.target : null, body.direction ?? null, body.domain ?? null, t, id],
+      );
+      await audit(tx, t, sub, "kpi.customized", id);
+      return { ok: true };
+    }),
+  );
+  app.post("/api/saas/:tenantId/kpis/custom", async (req) =>
+    tenant(req, async (tx, t, sub) => {
+      await permit(tx, t, "configure");
+      const body = input(
+        z.object({
+          name: z.string().trim().min(1).max(120),
+          description: z.string().trim().max(2000).default("Custom performance indicator"),
+          unit: z.string().trim().min(1).max(32).default("%"),
+          direction: z.enum(["higher", "lower", "neutral"]).default("higher"),
+          domain: z.string().trim().max(80).default("Operations"),
+          target: z.number().nullable().optional(),
+        }),
+        req.body,
+      );
+      const kpiId = randomUUID();
+      const rawKey = body.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 48);
+      const key = rawKey.endsWith("_") ? rawKey.slice(0, -1) : rawKey;
+      await tx.query(
+        `insert ignore into kpi_measures(id, tenant_id, \`key\`, name, unit, description, rolls_up, created_at)
+         values(UUID(), $1, $2, $3, $4, $5, 1, NOW(6))`,
+        [t, key, body.name, body.unit, body.description],
+      );
+      await tx.query(
+        `insert into kpi_definitions(id, tenant_id, \`key\`, version, name, description, unit, formula, direction, target, state, domain, sort_order, created_by, approved_by, created_at)
+         values($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, 'active', $10, 99, $11, $11, NOW(6))`,
+        [kpiId, t, key, body.name, body.description, body.unit, JSON.stringify({ measure: key }), body.direction, body.target ?? null, body.domain, sub],
+      );
+      await tx.query(
+        `insert ignore into kpi_grants(id, tenant_id, role_id, capability, kpi_id)
+         select UUID(), $1, id, 'view', $2 from kpi_roles where tenant_id=$1`,
+        [t, kpiId],
+      );
+      await audit(tx, t, sub, "kpi.created", kpiId);
+      return { ok: true, id: kpiId };
+    }),
+  );
   app.post("/api/saas/:tenantId/batches", async (req) =>
     tenant(req, async (tx, t, sub) => {
       const b = input(InputBatchSchema, req.body);
@@ -496,7 +562,9 @@ export async function registerSaasRoutes(
         'select allow_self_approval as "allowSelfApproval" from kpi.organizations where id=$1',
         [t],
       );
-      return SettingsSchema.parse(row);
+      return SettingsSchema.parse({
+        allowSelfApproval: row?.allowSelfApproval === true || row?.allowSelfApproval === 1 || row?.allowSelfApproval === '1',
+      });
     }),
   );
   app.post("/api/saas/:tenantId/settings", async (req) =>

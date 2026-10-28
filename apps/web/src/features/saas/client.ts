@@ -18,7 +18,9 @@ export async function request<T>(
 ): Promise<T> {
   const session = await getCurrentSession();
   if (!session) {
-    window.location.assign("/login");
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.assign("/login");
+    }
     throw new Error("Please sign in.");
   }
   const base = resolveApiBase(path);
@@ -88,3 +90,57 @@ export async function request<T>(
 }
 export const mutate = (path: string, body: unknown) =>
   request(path, MutationResponseSchema, body);
+
+export async function publicRequest<T>(
+  path: string,
+  schema: { parse(value: unknown): T },
+  body?: unknown,
+): Promise<T> {
+  const base = resolveApiBase(path);
+  if (!base) throw new Error("The API address is not configured.");
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
+    });
+  } catch (netErr) {
+    throw new Error(
+      `Could not reach API server at ${base}: ${netErr instanceof Error ? netErr.message : "Network connection failed"}.`,
+      { cause: netErr },
+    );
+  }
+
+  const rawText = await response.text();
+  let result: unknown;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    result = undefined;
+  }
+
+  if (!response.ok) {
+    if (result && typeof result === "object") {
+      const error = ErrorEnvelopeSchema.safeParse(result);
+      if (error.success && error.data.error.message) {
+        throw new Error(error.data.error.message);
+      }
+    }
+    if (rawText.trim() && rawText.length < 200 && !rawText.includes("<html")) {
+      throw new Error(`API Error (${response.status}): ${rawText.trim()}`);
+    }
+    throw new Error(`Server returned error status ${response.status} (${response.statusText || "Request failed"}).`);
+  }
+
+  if (result === undefined) {
+    throw new Error("Received an invalid response format from the server (expected JSON).");
+  }
+
+  return schema.parse(result);
+}

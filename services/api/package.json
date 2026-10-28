@@ -5,10 +5,12 @@
   "type": "module",
   "description": "Command Center backend — Fastify 5 API (Vercel Project 2)",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env src/app.ts",
+    "dev:control": "node --env-file-if-exists=.env.control src/app.ts",
+    "dev:identity": "node --env-file-if-exists=.env.identity src/app.ts",
     "knowledge:sync": "node --env-file-if-exists=.env src/knowledge-sync.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -20,6 +22,7 @@
     "@orbit/kpi-framework": "*",
     "fastify": "^5.12.5",
     "jose": "^6.2.12",
+    "mysql2": "^3.24.6",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },

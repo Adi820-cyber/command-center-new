@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Live hospital simulator: signs in as ERP admin and desk accounts and does what staff would, through the ERP API (ADR 0017)",
   "engines": {
-    "node": ">=22.18 <23"
+    "node": ">=22.18"
   },
   "scripts": {
     "start": "node src/main.ts",

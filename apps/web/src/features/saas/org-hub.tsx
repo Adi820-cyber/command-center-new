@@ -13,10 +13,11 @@ import { AccessPanel, type IssuedSet } from "./access-panel";
 import { request } from "./client";
 import { domainTitle } from "./domains";
 import { parseEmails } from "./emails";
+import { OrgKpis } from "./org-kpis";
 
 type Change = (path: string, body: unknown) => Promise<boolean>;
-type Section = "Overview" | "Roles & KPIs" | "People" | "Units";
-const SECTIONS: Section[] = ["Overview", "Roles & KPIs", "People", "Units"];
+type Section = "Overview" | "Roles & Permissions" | "KPIs (Predefined & Custom)" | "People & Logins" | "Units & Structure";
+const SECTIONS: Section[] = ["Overview", "Roles & Permissions", "KPIs (Predefined & Custom)", "People & Logins", "Units & Structure"];
 
 const CAPABILITIES: { key: Capability; label: string; help: string }[] = [
   { key: "view", label: "See results", help: "Sees the chosen KPIs on their dashboard and in Ask." },
@@ -62,9 +63,10 @@ export function OrgHub({
         ))}
       </nav>
       {section === "Overview" && <Overview w={w} change={change} goto={goto} open={setSection} governance={governance} />}
-      {section === "Roles & KPIs" && <Roles w={w} change={change} tenant={tenant} reload={reload} />}
-      {section === "People" && <People w={w} change={change} tenant={tenant} reload={reload} />}
-      {section === "Units" && <Units w={w} change={change} />}
+      {section === "Roles & Permissions" && <Roles w={w} change={change} tenant={tenant} reload={reload} />}
+      {section === "KPIs (Predefined & Custom)" && <OrgKpis workspace={w} change={change} reload={reload} />}
+      {section === "People & Logins" && <People w={w} change={change} tenant={tenant} reload={reload} />}
+      {section === "Units & Structure" && <Units w={w} change={change} />}
     </>
   );
 }
@@ -97,36 +99,36 @@ function Overview({
       detail: fresh
         ? "Start from an industry template, or build your roles and KPIs yourself."
         : `${w.kpis.length} KPIs and ${w.roles.length} roles. Change any of them at any time.`,
-      action: () => (fresh ? document.getElementById("starting-point")?.scrollIntoView({ behavior: "smooth" }) : goto("KPI library")),
-      cta: fresh ? "Choose" : "KPI library",
+      action: () => (fresh ? document.getElementById("starting-point")?.scrollIntoView({ behavior: "smooth" }) : open("KPIs (Predefined & Custom)")),
+      cta: fresh ? "Choose" : "KPIs",
     },
     {
       done: w.units.length > 1,
       title: "Your structure",
       detail: w.units.length > 1 ? `${w.units.length} units` : "Add branches, sites or departments, so figures can be reported and rolled up per unit.",
-      action: () => open("Units"),
+      action: () => open("Units & Structure"),
       cta: "Units",
     },
     {
       done: w.roles.length > 0,
       title: "Roles and what they see",
       detail: w.roles.length ? `${w.roles.length} roles` : "Create roles and choose which KPIs each one sees.",
-      action: () => open("Roles & KPIs"),
-      cta: "Roles & KPIs",
+      action: () => open("Roles & Permissions"),
+      cta: "Roles & Permissions",
     },
     {
       done: people.length > 0 && peopleWithRoles === people.length,
       title: "People with roles",
       detail: people.length ? `${peopleWithRoles} of ${people.length} people have a role` : "Invite your team and give each person a role.",
-      action: () => open("People"),
-      cta: "People",
+      action: () => open("People & Logins"),
+      cta: "People & Logins",
     },
     {
       done: active.length > 0 && withTarget === active.length,
       title: "Targets",
       detail: active.length ? `${withTarget} of ${active.length} KPIs have a target. Without one, nothing can be on or off target.` : "Add KPIs first.",
-      action: () => goto("KPI library"),
-      cta: "KPI library",
+      action: () => open("KPIs (Predefined & Custom)"),
+      cta: "Set KPIs & Targets",
     },
     {
       done: w.results.length > 0,
@@ -140,7 +142,7 @@ function Overview({
 
   return (
     <>
-      {fresh && <StartingPoint change={change} goto={goto} open={open} />}
+      {fresh && <StartingPoint change={change} open={open} />}
       <div className="saas-columns">
         <section className="saas-card">
           <h2>Organization details</h2>
@@ -194,11 +196,9 @@ function Overview({
  */
 function StartingPoint({
   change,
-  goto,
   open,
 }: {
   change: Change;
-  goto: (tab: "KPI library" | "Data & approvals" | "Dashboard") => void;
   open: (s: Section) => void;
 }) {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
@@ -261,11 +261,11 @@ function StartingPoint({
         >
           {busy ? "Setting up…" : "Use this template"}
         </button>
-        <button type="button" className="secondary" onClick={() => goto("KPI library")}>
-          Pick KPIs from the library
+        <button type="button" className="secondary" onClick={() => open("KPIs (Predefined & Custom)")}>
+          🌟 Pick Predefined &amp; Custom KPIs
         </button>
-        <button type="button" className="secondary" onClick={() => open("Roles & KPIs")}>
-          Create roles myself
+        <button type="button" className="secondary" onClick={() => open("Roles & Permissions")}>
+          👤 Set Up Roles &amp; Permissions
         </button>
       </div>
       {problem && <p className="muted">{problem}</p>}

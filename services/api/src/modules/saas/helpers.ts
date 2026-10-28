@@ -26,7 +26,7 @@ export interface SaasOptions {
 }
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-export const uuid = z.uuid();
+export const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 export function input<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
   const result = schema.safeParse(value);
   if (!result.success)
@@ -150,6 +150,8 @@ export async function inSubject<T>(
     // Log the kind of failure only. Messages and detail fields can contain customer values.
     console.error("saas operation failed", {
       error: e instanceof Error ? e.name : typeof e,
+      message: e instanceof Error ? e.message : String(e),
+      issues: e && typeof e === 'object' && 'issues' in e ? (e as any).issues : undefined,
       code: typeof code === "string" ? code : undefined,
     });
     // Never forward SQL errors: detail fields can contain customer values.
