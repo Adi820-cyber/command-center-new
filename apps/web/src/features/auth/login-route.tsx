@@ -140,9 +140,10 @@ export async function loginAction({ request }: ActionFunctionArgs) {
 
     if (!result.ok) {
       const message =
-        result.reason === "invalid_credentials"
+        result.message ||
+        (result.reason === "invalid_credentials"
           ? "We couldn't sign you in with those credentials. Check your email and password."
-          : "The sign-in service is unavailable right now. Please try again shortly.";
+          : "The sign-in service is unavailable right now. Please try again shortly.");
 
       return data<LoginActionData>(
         { email: validation.input.email, message },

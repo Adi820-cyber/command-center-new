@@ -146,7 +146,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     return PasswordCodeResponseSchema.parse({
       sentTo: maskEmail(me.email),
       expiresInMinutes: 10,
-      debugCode: code,
+      debugCode: process.env.NODE_ENV === "test" ? code : undefined,
     });
   });
 
@@ -246,6 +246,21 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     const { email } = input(RequestPasswordResetOtpRequestSchema, req.body);
     const normalized = email.trim().toLowerCase();
 
+    // Verify account exists before generating OTP so user isn't misled
+    const db = options.identityDatabase ?? options.database;
+    if (db) {
+      try {
+        const users = await inSubject(db, "system", async (tx) => {
+          return tx.query("SELECT id FROM auth_users WHERE LOWER(email) = LOWER(?)", [normalized]);
+        });
+        if (!users || users.length === 0) {
+          throw new ApiError("not_found", "No account found with this email address. Please check your email or contact your administrator.");
+        }
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+      }
+    }
+
     const code = String(randomInt(100_000, 1_000_000));
     const codeHash = hash(`reset:${normalized}:${code}`);
 
@@ -255,6 +270,24 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       attempts: 0,
       verified: false,
     });
+
+    // Persist to kpi_email_codes in database if available
+    if (db) {
+      try {
+        await inSubject(db, "system", async (tx) => {
+          await tx.query(
+            "UPDATE kpi_email_codes SET expires_at = NOW(6) WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6)",
+            [normalized],
+          );
+          await tx.query(
+            "INSERT INTO kpi_email_codes (id, subject, purpose, code_hash, created_at, expires_at) VALUES (UUID(), ?, 'password', ?, NOW(6), DATE_ADD(NOW(6), INTERVAL 10 MINUTE))",
+            [normalized, codeHash],
+          );
+        });
+      } catch (dbErr) {
+        // Fallback to in-memory store
+      }
+    }
 
     if (options.mailer) {
       try {
@@ -276,13 +309,14 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
         );
       } catch (err) {
         console.error("Failed to send password reset OTP email", err);
+        throw new ApiError("unavailable", "The verification code email could not be delivered. Please try again shortly.");
       }
     }
 
     return RequestPasswordResetOtpResponseSchema.parse({
       sentTo: maskEmail(email),
       expiresInMinutes: 10,
-      debugCode: code,
+      debugCode: process.env.NODE_ENV === "test" ? code : undefined,
     });
   });
 
@@ -291,6 +325,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     const body = input(VerifyPasswordResetOtpRequestSchema, req.body);
     const normalized = body.email.trim().toLowerCase();
     const record = passwordResetOtps.get(normalized);
+    const db = options.identityDatabase ?? options.database;
 
     let verified = false;
 
@@ -299,6 +334,29 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       const testHash = hash(`reset:${normalized}:${body.otpCode}`);
       if (record.codeHash === testHash) {
         verified = true;
+      }
+    }
+
+    if (!verified && db) {
+      try {
+        const rows = await inSubject(db, "system", async (tx) => {
+          return tx.query(
+            "SELECT id, code_hash, attempts FROM kpi_email_codes WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6) ORDER BY created_at DESC LIMIT 1",
+            [normalized],
+          );
+        });
+        if (rows && rows.length > 0) {
+          const row = (rows as any[])[0];
+          const testHash = hash(`reset:${normalized}:${body.otpCode}`);
+          if (row.code_hash === testHash) {
+            verified = true;
+            await inSubject(db, "system", async (tx) => {
+              await tx.query("UPDATE kpi_email_codes SET used_at = NOW(6) WHERE id = ?", [row.id]);
+            });
+          }
+        }
+      } catch {
+        // Fallback already checked
       }
     }
 
@@ -344,10 +402,17 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
 
     if (options.authAdmin?.resetPasswordByEmail) {
       try {
-        await options.authAdmin.resetPasswordByEmail(normalized, body.password);
+        const resetOk = await options.authAdmin.resetPasswordByEmail(normalized, body.password);
+        if (!resetOk) {
+          throw new ApiError("not_found", "No account found with this email address.");
+        }
       } catch (err) {
+        if (err instanceof ApiError) throw err;
         console.error("AuthAdmin reset error", err);
+        throw new ApiError("unavailable", "Failed to update account password. Please try again.");
       }
+    } else {
+      throw new ApiError("unavailable", "Password reset service is not configured on this environment.");
     }
 
     passwordResetOtps.delete(normalized);

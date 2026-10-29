@@ -34,12 +34,19 @@ const EnvSchema = z.object({
   SUPABASE_SECRET_KEY: optional(z.string().min(1)),
   /** 'true': refuse customer data to anyone whose temporary password is not yet replaced through the emailed code. */
   ENFORCE_PASSWORD_CHANGE: optional(z.enum(['true', 'false'])),
-  /** How the identity API sends codes: 'brevo' (free plan) or 'outbox' (a local file, for tests). */
-  MAIL_PROVIDER: optional(z.enum(['brevo', 'outbox'])),
+  /** How the identity API sends codes: 'brevo' (free plan), 'smtp' (email server), or 'outbox' (a local file, for tests). */
+  MAIL_PROVIDER: optional(z.enum(['brevo', 'outbox', 'smtp'])),
   BREVO_API_KEY: optional(z.string().min(1)),
   MAIL_FROM: optional(z.email()),
   MAIL_FROM_NAME: z.string().min(1).default('Command Center'),
   MAIL_OUTBOX: optional(z.string().min(1)),
+  SMTP_HOST: optional(z.string().min(1)),
+  SMTP_PORT: optional(z.coerce.number().int().positive()),
+  SMTP_SECURE: optional(z.enum(['true', 'false']).transform((v) => v === 'true')),
+  SMTP_USER: optional(z.string().min(1)),
+  SMTP_PASSWORD: optional(z.string().min(1)),
+  SMTP_FROM_NAME: optional(z.string().min(1)),
+  SMTP_FROM_EMAIL: optional(z.string().min(1)),
   ALLOWED_ORIGINS: z.string().default(''),
   ORBIT_LIVE_SOURCES: z.string().default(''),
   /** Which half of Orbit this deployment serves (src/surface.ts). Default `all`. */
@@ -156,6 +163,23 @@ function mailConfig(vars: z.infer<typeof EnvSchema>): MailConfig | undefined {
   if (vars.MAIL_PROVIDER === 'brevo') {
     if (!vars.BREVO_API_KEY || !vars.MAIL_FROM) throw new Error('MAIL_PROVIDER=brevo needs BREVO_API_KEY and MAIL_FROM');
     return { provider: 'brevo', apiKey: vars.BREVO_API_KEY, fromEmail: vars.MAIL_FROM, fromName: vars.MAIL_FROM_NAME };
+  }
+  if (vars.MAIL_PROVIDER === 'smtp' || (!vars.MAIL_PROVIDER && vars.SMTP_HOST && vars.SMTP_USER && vars.SMTP_PASSWORD)) {
+    if (!vars.SMTP_HOST || !vars.SMTP_USER || !vars.SMTP_PASSWORD) {
+      throw new Error('MAIL_PROVIDER=smtp needs SMTP_HOST, SMTP_USER, and SMTP_PASSWORD');
+    }
+    const port = vars.SMTP_PORT ?? (vars.SMTP_SECURE ? 465 : 587);
+    const secure = vars.SMTP_SECURE ?? (port === 465);
+    return {
+      provider: 'smtp',
+      host: vars.SMTP_HOST,
+      port,
+      secure,
+      user: vars.SMTP_USER,
+      pass: vars.SMTP_PASSWORD,
+      fromEmail: vars.SMTP_FROM_EMAIL || vars.SMTP_USER,
+      fromName: vars.SMTP_FROM_NAME || 'Command Center',
+    };
   }
   return undefined;
 }

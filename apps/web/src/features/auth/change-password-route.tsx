@@ -29,7 +29,6 @@ export function ChangePasswordRoute() {
   const [sentTo, setSentTo] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
-  const [debugOtp, setDebugOtp] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -71,12 +70,7 @@ export function ChangePasswordRoute() {
       const result = await request("/api/identity/me/password-code", PasswordCodeResponseSchema, {});
       setSentTo(result.sentTo);
       setCooldown(60);
-      if (result.debugCode) {
-        setDebugOtp(result.debugCode);
-        setMessage(`Verification code dispatched to ${result.sentTo}. For testing, code is: ${result.debugCode}`);
-      } else {
-        setMessage(`A 6-digit verification code has been dispatched to ${result.sentTo}.`);
-      }
+      setMessage(`A 6-digit verification code has been dispatched to ${result.sentTo}. Please check your inbox and spam folder.`);
     } catch (error) {
       const text = error instanceof Error ? error.message : "";
       setMessage(text || "The verification code could not be sent. Please click Resend Code.");
@@ -205,21 +199,7 @@ export function ChangePasswordRoute() {
               <div className="p-3 bg-blue-50/70 border border-blue-200/60 rounded-xl text-xs text-blue-900">
                 A verification code was dispatched to <strong>{sentTo || email}</strong> (valid for 10 minutes).
               </div>
-              {debugOtp && (
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs font-mono text-amber-900 flex items-center justify-between">
-                  <span>Testing Code: <strong>{debugOtp}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const input = document.getElementById("password-code") as HTMLInputElement;
-                      if (input) input.value = debugOtp;
-                    }}
-                    className="text-[10px] font-bold uppercase bg-amber-200 hover:bg-amber-300 px-2 py-0.5 rounded cursor-pointer"
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
-              )}
+
               <div>
                 <label htmlFor="password-code" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   6-digit Email Verification Code (OTP) *

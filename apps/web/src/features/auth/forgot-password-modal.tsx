@@ -37,7 +37,6 @@ export function ForgotPasswordModal({
   const [email, setEmail] = useState(initialEmail);
   const [otpCode, setOtpCode] = useState("");
   const [sentTo, setSentTo] = useState("");
-  const [debugCode, setDebugCode] = useState<string | undefined>();
   const [resetToken, setResetToken] = useState("");
 
   const [newPassword, setNewPassword] = useState("");
@@ -58,7 +57,6 @@ export function ForgotPasswordModal({
       setNewPassword("");
       setConfirmPassword("");
       setMessage(null);
-      setDebugCode(undefined);
     }
   }, [isOpen, initialEmail]);
 
@@ -101,20 +99,16 @@ export function ForgotPasswordModal({
       );
 
       setSentTo(res.sentTo);
-      setDebugCode(res.debugCode);
-      setStep("otp");
-      setCooldown(60);
-      setMessage({ text: `Verification code sent to ${res.sentTo}`, ok: true });
-    } catch (err) {
-      // Mock / fallback generator for offline preview environments
-      const simulatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-      setSentTo(targetEmail.replace(/(.{2})(.*)(?=@)/, "$1***"));
-      setDebugCode(simulatedOtp);
       setStep("otp");
       setCooldown(60);
       setMessage({
-        text: `Verification code generated for ${targetEmail}. (Check simulated badge below if email provider is offline).`,
+        text: `Verification code sent to ${res.sentTo}. Please check your email inbox and spam folder.`,
         ok: true,
+      });
+    } catch (err) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Failed to send verification code. Please check your email and try again.",
+        ok: false,
       });
     } finally {
       setBusy(false);
@@ -134,30 +128,14 @@ export function ForgotPasswordModal({
     setMessage(null);
 
     try {
-      let verified = false;
-      let token = "";
+      const res = await publicRequest(
+        "/api/identity/password-reset/verify-otp",
+        VerifyPasswordResetOtpResponseSchema,
+        { email: email.trim().toLowerCase(), otpCode: code },
+      );
 
-      // 1. Try API verification
-      try {
-        const res = await publicRequest(
-          "/api/identity/password-reset/verify-otp",
-          VerifyPasswordResetOtpResponseSchema,
-          { email: email.trim().toLowerCase(), otpCode: code },
-        );
-        verified = res.ok;
-        token = res.resetToken;
-      } catch (apiErr) {
-        // Fallback for simulated debugCode in offline / mock testing
-        if (debugCode && code === debugCode) {
-          verified = true;
-          token = `mock_token_${Date.now()}`;
-        } else {
-          throw apiErr;
-        }
-      }
-
-      if (verified) {
-        setResetToken(token);
+      if (res.ok) {
+        setResetToken(res.resetToken);
         setStep("password");
         setMessage({
           text: "Email verified successfully! You now have permission to choose a new password.",
@@ -166,7 +144,7 @@ export function ForgotPasswordModal({
       }
     } catch (err) {
       setMessage({
-        text: err instanceof Error ? err.message : "Incorrect verification code. Please check and try again.",
+        text: err instanceof Error ? err.message : "Incorrect verification code. Please check your email and try again.",
         ok: false,
       });
     } finally {
@@ -190,19 +168,15 @@ export function ForgotPasswordModal({
     setMessage(null);
 
     try {
-      try {
-        await publicRequest(
-          "/api/identity/password-reset/confirm",
-          ConfirmPasswordResetResponseSchema,
-          {
-            email: email.trim().toLowerCase(),
-            resetToken,
-            password: newPassword,
-          },
-        );
-      } catch {
-        // Continue to notify user
-      }
+      await publicRequest(
+        "/api/identity/password-reset/confirm",
+        ConfirmPasswordResetResponseSchema,
+        {
+          email: email.trim().toLowerCase(),
+          resetToken,
+          password: newPassword,
+        },
+      );
 
       onSuccess(email.trim().toLowerCase(), "Password reset successfully. Sign in with your new password.");
       onClose();
@@ -343,49 +317,6 @@ export function ForgotPasswordModal({
                   Please enter it below to confirm email authorization.
                 </div>
               </div>
-
-              {/* Demo / Developer test badge */}
-              {debugCode && (
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    background: "#f0fdf4",
-                    border: "1px dashed #22c55e",
-                    borderRadius: 10,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Development / Demo Code
-                    </div>
-                    <div style={{ fontSize: 12, color: "#15803d", marginTop: 2 }}>
-                      If not in your inbox/spam, use: <code style={{ fontWeight: 800, fontSize: 13, letterSpacing: 2, background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>{debugCode}</code>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOtpCode(debugCode)}
-                    style={{
-                      background: "#16a34a",
-                      color: "#ffffff",
-                      border: 0,
-                      borderRadius: 8,
-                      padding: "6px 12px",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                    }}
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
-              )}
 
               <div className="profile-form-group" style={{ textAlign: "center" }}>
                 <label htmlFor="fp-otp" style={{ justifyContent: "center" }}>

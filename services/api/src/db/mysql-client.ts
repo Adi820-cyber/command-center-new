@@ -760,25 +760,47 @@ async function applyTemplateToTenant(
 
   return {
     async query(text: string, params: SqlParam[] = []) {
-      return executeOnConnection(pool, text, params);
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          return await executeOnConnection(pool, text, params);
+        } catch (err: any) {
+          const isDeadlock = err?.code === 'ER_LOCK_DEADLOCK' || err?.errno === 1213;
+          if (isDeadlock && attempt < maxRetries) {
+            await new Promise((res) => setTimeout(res, 50 * attempt));
+            continue;
+          }
+          throw err;
+        }
+      }
+      return [];
     },
 
     async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-      const connection = await pool.getConnection();
-      try {
-        await connection.beginTransaction();
-        const tx: Tx = {
-          query: (text, params = []) => executeOnConnection(connection, text, params),
-        };
-        const result = await fn(tx);
-        await connection.commit();
-        return result;
-      } catch (err) {
-        await connection.rollback();
-        throw err;
-      } finally {
-        connection.release();
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const connection = await pool.getConnection();
+        try {
+          await connection.beginTransaction();
+          const tx: Tx = {
+            query: (text, params = []) => executeOnConnection(connection, text, params),
+          };
+          const result = await fn(tx);
+          await connection.commit();
+          return result;
+        } catch (err: any) {
+          try { await connection.rollback(); } catch {}
+          const isDeadlock = err?.code === 'ER_LOCK_DEADLOCK' || err?.errno === 1213;
+          if (isDeadlock && attempt < maxRetries) {
+            await new Promise((res) => setTimeout(res, 50 * attempt));
+            continue;
+          }
+          throw err;
+        } finally {
+          connection.release();
+        }
       }
+      throw new Error('Transaction failed after deadlocks');
     },
   };
 }

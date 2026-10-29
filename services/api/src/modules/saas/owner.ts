@@ -83,7 +83,7 @@ export async function registerOwnerRoutes(app: FastifyInstance, options: SaasOpt
       return RequestRoleOtpResponseSchema.parse({
         sentTo: maskEmail(email),
         expiresInMinutes: 10,
-        debugCode: code,
+        debugCode: process.env.NODE_ENV === "test" ? code : undefined,
       });
     }),
   );

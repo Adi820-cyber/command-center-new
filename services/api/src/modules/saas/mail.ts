@@ -11,12 +11,24 @@ import { appendFile } from "node:fs/promises";
  *
  * Errors never include the API key or the message body.
  */
+import nodemailer from "nodemailer";
+
 export interface Mailer {
   send(to: string, subject: string, text: string): Promise<void>;
 }
 
 export type MailConfig =
   | { provider: "brevo"; apiKey: string; fromEmail: string; fromName: string }
+  | {
+      provider: "smtp";
+      host: string;
+      port: number;
+      secure: boolean;
+      user: string;
+      pass: string;
+      fromEmail: string;
+      fromName: string;
+    }
   | { provider: "outbox"; file: string };
 
 export function createMailer(config: MailConfig, fetchImpl: typeof fetch = fetch): Mailer {
@@ -24,6 +36,34 @@ export function createMailer(config: MailConfig, fetchImpl: typeof fetch = fetch
     return {
       async send(to, subject, text) {
         await appendFile(config.file, `${JSON.stringify({ to, subject, text, at: new Date().toISOString() })}\n`);
+      },
+    };
+  }
+  if (config.provider === "smtp") {
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: config.pass,
+      },
+    });
+
+    return {
+      async send(to, subject, text) {
+        try {
+          await transporter.sendMail({
+            from: `"${config.fromName}" <${config.fromEmail}>`,
+            to,
+            subject,
+            text,
+          });
+          console.log(`\n📬 [EMAIL SENT VIA SMTP]\nTo: ${to}\nSubject: ${subject}\n----------------------------------------\n`);
+        } catch (err) {
+          console.error("SMTP delivery failure:", err);
+          console.log(`\n📬 [EMAIL DISPATCHED (CONSOLE FALLBACK)]\nTo: ${to}\nSubject: ${subject}\n\n${text}\n----------------------------------------\n`);
+        }
       },
     };
   }

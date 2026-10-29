@@ -810,7 +810,6 @@ function RoleEditor({
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [otpSentTo, setOtpSentTo] = useState("");
-  const [otpDebugCode, setOtpDebugCode] = useState<string | undefined>();
   const [otpError, setOtpError] = useState("");
   const [otpRequesting, setOtpRequesting] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
@@ -866,7 +865,6 @@ function RoleEditor({
         { roleName: value.name.trim() }
       );
       setOtpSentTo(res.sentTo);
-      setOtpDebugCode(res.debugCode);
       setSecondsLeft(res.expiresInMinutes * 60);
       setCooldown(30);
       return true;
@@ -1073,19 +1071,6 @@ function RoleEditor({
               </span>
             </div>
 
-            {otpDebugCode && (
-              <div className="role-otp-demo-badge">
-                <span>🧪 Demo Code: <code>{otpDebugCode}</code></span>
-                <button
-                  type="button"
-                  className="secondary"
-                  style={{ padding: "3px 8px", fontSize: 11 }}
-                  onClick={() => setOtpCode(otpDebugCode)}
-                >
-                  Use code
-                </button>
-              </div>
-            )}
 
             <div className="role-otp-input-box">
               <label htmlFor="role-otp-field" style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>

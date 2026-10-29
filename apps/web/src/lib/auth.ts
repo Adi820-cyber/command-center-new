@@ -2,7 +2,7 @@ export type SignInFailure = "invalid_credentials" | "unavailable";
 
 export type SignInResult =
   | { ok: true }
-  | { ok: false; reason: SignInFailure };
+  | { ok: false; reason: SignInFailure; message?: string };
 
 export interface AuthSession {
   access_token: string;
@@ -65,12 +65,26 @@ export async function signInWithPassword(email: string, password: string): Promi
       body: JSON.stringify({ email, password }),
     });
 
-    if (res.status === 401 || res.status === 400) {
-      return { ok: false, reason: "invalid_credentials" };
+    if (res.status === 401 || res.status === 400 || res.status === 404) {
+      let detailMsg: string | undefined;
+      try {
+        const data = await res.json();
+        detailMsg = data?.error?.message;
+      } catch {}
+      return {
+        ok: false,
+        reason: "invalid_credentials",
+        message: detailMsg || "We couldn't sign you in with those credentials. Check your email and password.",
+      };
     }
 
     if (!res.ok) {
-      return { ok: false, reason: "unavailable" };
+      let errorMsg = "The sign-in service is unavailable right now. Please try again shortly.";
+      try {
+        const data = await res.json();
+        if (data?.error?.message) errorMsg = data.error.message;
+      } catch {}
+      return { ok: false, reason: "unavailable", message: errorMsg };
     }
 
     const data = await res.json();
@@ -79,9 +93,13 @@ export async function signInWithPassword(email: string, password: string): Promi
       return { ok: true };
     }
 
-    return { ok: false, reason: "unavailable" };
-  } catch {
-    return { ok: false, reason: "unavailable" };
+    return { ok: false, reason: "unavailable", message: "Invalid session response from auth server." };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "unavailable",
+      message: "The sign-in service is unreachable. Please check your internet connection.",
+    };
   }
 }
 
