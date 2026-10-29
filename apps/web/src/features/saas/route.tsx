@@ -29,6 +29,7 @@ import { TargetEditor } from "./target-editor";
 import { CustomKpiForm } from "./custom-kpi";
 import { KpiActions } from "./kpi-actions";
 import { OrgHub } from "./org-hub";
+import { OrgKpis } from "./org-kpis";
 import { initialOf } from "./identity";
 import { SaaSOrganizationsManager } from "../operator/saas-orgs-manager";
 import { SaaSRevenueDashboard, type ControlOrg } from "../operator/saas-revenue-dashboard";
@@ -40,9 +41,9 @@ import {
   Inbox,
   Building2,
   FileSpreadsheet,
-  ShieldAlert,
   CheckSquare,
   RotateCcw,
+  Shield,
 } from "lucide-react";
 import { ExecutiveMorningBrief } from "./executive-morning-brief";
 import { ExecutiveAuxViews } from "./executive-aux-views";
@@ -52,29 +53,31 @@ import "./v2.css";
 
 type Tab =
   | "Morning Brief"
+  | "Roles & Access"
+  | "KPI Catalog"
+  | "Data & approvals"
+  | "Decisions & Actions"
+  | "Activity"
+  | "Organization"
+  | "KPI library"
+  | "Actions"
+  | "Dashboard"
   | "KPI Dashboard"
   | "Priority Inbox"
   | "Facilities & COEs"
   | "Board Meetings"
   | "Project Risk"
   | "KPI Explorer"
-  | "Dashboard"
   | "Ask"
-  | "Data & approvals"
-  | "KPI library"
-  | "Actions"
-  | "Organization"
-  | "Activity"
   | "SaaS Orgs";
 
 const EXECUTIVE_NAV_ITEMS = [
   { id: "Morning Brief" as Tab, label: "Morning Brief", icon: LayoutGrid },
-  { id: "KPI Dashboard" as Tab, label: "KPI Dashboard", icon: BarChart3 },
-  { id: "Priority Inbox" as Tab, label: "Priority Inbox / Prior...", icon: Inbox, badge: "8" },
-  { id: "Facilities & COEs" as Tab, label: "Facilities & COEs", icon: Building2 },
-  { id: "Board Meetings" as Tab, label: "Board Meetings & Follow...", icon: FileSpreadsheet },
-  { id: "Project Risk" as Tab, label: "Project Risk", icon: ShieldAlert },
-  { id: "KPI Explorer" as Tab, label: "KPI Explorer", icon: CheckSquare },
+  { id: "Roles & Access" as Tab, label: "Roles & Permissions", icon: Shield },
+  { id: "KPI Catalog" as Tab, label: "KPI Catalog & Library", icon: BarChart3 },
+  { id: "Data & approvals" as Tab, label: "Data & Approvals", icon: FileSpreadsheet },
+  { id: "Decisions & Actions" as Tab, label: "Decisions & Actions", icon: Inbox, badge: "4" },
+  { id: "Activity" as Tab, label: "Activity & Audit", icon: CheckSquare },
 ];
 
 const OPERATOR_TABS: { tab: Tab; label: string; icon: string }[] = [
@@ -306,25 +309,112 @@ export function SaasRoute() {
       ) : (
         /* ─── Executive Midnight Navy Sidebar (Matching Image 1, 4, 5) ─── */
         <aside className="exec-sidebar">
+          {/* Organization Switcher & Context */}
+          <div style={{ padding: "0 12px 14px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: "#60a5fa", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                Organization Scope
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#1e3a8a", color: "#93c5fd" }}>
+                SaaS Multi-Tenant
+              </span>
+            </div>
+            {organizations.length > 1 ? (
+              <select
+                value={tenant}
+                onChange={(e) => selectTenant(e.target.value)}
+                aria-label="Switch organization"
+                style={{
+                  width: "100%",
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  background: "#111c38",
+                  border: "1px solid #1e3a8a",
+                  color: "#ffffff",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id} style={{ background: "#0b1329", color: "#ffffff" }}>
+                    🏢 {org.name} ({org.status})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  background: "#111c38",
+                  borderRadius: 8,
+                  border: "1px solid #1e3a8a",
+                }}
+              >
+                <Building2 size={16} color="#60a5fa" />
+                <span
+                  style={{
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={workspace?.organization.name || organizations[0]?.name || "Command Center"}
+                >
+                  {workspace?.organization.name || organizations[0]?.name || "Command Center"}
+                </span>
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#4ade80",
+                    background: "rgba(34, 197, 94, 0.15)",
+                    padding: "2px 6px",
+                    borderRadius: 9999,
+                  }}
+                >
+                  Active
+                </span>
+              </div>
+            )}
+          </div>
+
           {/* Top Profile Card (Image 1) */}
           <div className="exec-profile-card">
             <div className="exec-avatar-circle">
-              {profileName ? initialOf(profileName) : "CH"}
+              {initialOf(profileName || email || "OA")}
             </div>
             <div className="exec-profile-info">
-              <span className="exec-profile-title">{profileName || "Chairman"}</span>
-              <span className="exec-profile-role">Chairman (Group)</span>
+              <span className="exec-profile-title" title={email}>{profileName || email || "Org Admin"}</span>
+              <span className="exec-profile-role">
+                {isOperator
+                  ? "Platform Operator"
+                  : workspace?.organization.owner
+                  ? "Org Admin (Manager)"
+                  : (workspace?.me?.roles?.map((r) => r.name).join(", ") || "Role Member")}
+              </span>
             </div>
           </div>
 
           {/* Section Header */}
-          <div className="exec-sidebar-section-title">EXECUTIVE COMMAND</div>
+          <div className="exec-sidebar-section-title">ORGANIZATION WORKSPACE</div>
 
           {/* Navigation Items (Image 1) */}
           <nav className="exec-nav-list" aria-label="Executive Command">
             {EXECUTIVE_NAV_ITEMS.map((item) => {
               const IconComp = item.icon;
-              const isActive = tab === item.id;
+              const isActive =
+                tab === item.id ||
+                (item.id === "Roles & Access" && tab === "Organization") ||
+                (item.id === "KPI Catalog" && tab === "KPI library") ||
+                (item.id === "Decisions & Actions" && tab === "Actions");
               return (
                 <button
                   key={item.id}
@@ -462,6 +552,7 @@ export function SaasRoute() {
                 }}
                 onNavigateTab={(t) => setTab(t as Tab)}
                 resetSignal={resetSignal}
+                workspace={workspace}
               />
             )}
 
@@ -483,26 +574,35 @@ export function SaasRoute() {
 
             {workspace && (
               <>
-                {tab === "KPI library" && <Kpis workspace={workspace} change={change} />}
+                {(tab === "KPI Catalog" || tab === "KPI library") && (
+                  <div style={{ padding: 28 }}>
+                    <OrgKpis workspace={workspace} change={change} reload={reload} />
+                  </div>
+                )}
                 {tab === "Data & approvals" && (
                   <div style={{ padding: 28 }}>
                     <CsvImport workspace={workspace} reload={reload} />
                     <DataEntry workspace={workspace} change={change} tenant={tenant} />
                   </div>
                 )}
-                {tab === "Organization" && (
+                {(tab === "Roles & Access" || tab === "Organization") && (
                   <div style={{ padding: 28 }}>
                     <OrgHub
                       workspace={workspace}
                       change={change}
-                      goto={setTab}
+                      goto={(targetTab) => {
+                        if (targetTab === "KPI library") setTab("KPI Catalog");
+                        else if (targetTab === "Data & approvals") setTab("Data & approvals");
+                        else setTab("Morning Brief");
+                      }}
                       tenant={tenant}
                       reload={reload}
+                      initialSection={tab === "Roles & Access" ? "Roles & Permissions" : "Overview"}
                       governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
                     />
                   </div>
                 )}
-                {tab === "Actions" && (
+                {(tab === "Decisions & Actions" || tab === "Actions") && (
                   <div style={{ padding: 28 }}>
                     <Actions workspace={workspace} change={change} />
                   </div>
@@ -524,6 +624,11 @@ export function SaasRoute() {
         onToggle={() => setAssistantOpen((open) => !open)}
         seedPrompt={askSeed}
         onClearSeed={() => setAskSeed("")}
+        workspace={workspace}
+        tenant={tenant}
+        isOperator={isOperator}
+        userEmail={email}
+        userName={profileName}
       />
 
       <UserProfileModal
@@ -661,7 +766,7 @@ type Props = {
   workspace: SaasWorkspace;
   change: (path: string, body: unknown) => Promise<boolean>;
 };
-function Kpis({ workspace: w, change }: Props) {
+export function Kpis({ workspace: w, change }: Props) {
   const [search, setSearch] = useState("");
   const [showRetired, setShowRetired] = useState(false);
   const [editing, setEditing] = useState<SaasWorkspace["kpis"][number]>();

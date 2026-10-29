@@ -8,12 +8,14 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { type SaasWorkspace } from "@orbit/contracts";
 import "./executive.css";
 
 interface Props {
   onOpenChatbot: (seed?: string) => void;
   onNavigateTab: (tab: string) => void;
   resetSignal?: number;
+  workspace?: SaasWorkspace;
 }
 
 export interface DrillTarget {
@@ -26,7 +28,7 @@ export interface DrillTarget {
   breakdown?: { label: string; value: string; margin?: string; status?: string }[];
 }
 
-export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSignal }: Props) {
+export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSignal, workspace }: Props) {
   // ─── Scope & Period Controls ───
   const [scope, setScope] = useState("Group (6 Lifecare hospitals)");
   const [domain, setDomain] = useState("All");
@@ -178,15 +180,19 @@ export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSigna
         <div>
           <div className="exec-eyebrows">
             <span className="exec-pill-blue">
-              <span>♡</span> GROUP EXECUTIVE OFFICE
+              <span>♡</span> {workspace?.organization.name ? workspace.organization.name.toUpperCase() : "GROUP EXECUTIVE OFFICE"}
             </span>
             <span className="exec-pill-green">
-              <span>●</span> Chairman (Group)
+              <span>●</span> {workspace?.organization.owner ? "Organization Admin (Manager)" : "Executive Command"}
             </span>
           </div>
-          <h1 className="exec-header-title">Chairman — Morning Brief</h1>
+          <h1 className="exec-header-title">
+            {workspace?.organization.name ? `${workspace.organization.name} — Executive Brief` : "Chairman — Morning Brief"}
+          </h1>
           <p className="exec-header-subtitle">
-            Here is the enterprise scorecard, capital allocation, and group-wide risk landscape.
+            {workspace
+              ? `Enterprise scorecard, ${workspace.kpis.length} active KPIs, and decision backlog for ${workspace.organization.name}.`
+              : "Here is the enterprise scorecard, capital allocation, and group-wide risk landscape."}
           </p>
         </div>
 

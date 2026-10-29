@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { Sparkles, X, Send } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Sparkles, X, Send, Lock, ShieldCheck } from "lucide-react";
+import { type SaasWorkspace, WorkspaceAskResponseSchema, type WorkspaceAskResponse } from "@orbit/contracts";
+import { request } from "./client";
 import "./executive.css";
 
 interface ChatMessage {
@@ -7,46 +9,121 @@ interface ChatMessage {
   sender: "bot" | "user";
   text: string;
   time: string;
+  roleBadge?: string;
+  facts?: WorkspaceAskResponse["facts"];
+  sources?: WorkspaceAskResponse["sources"];
+  isRestricted?: boolean;
 }
 
-interface Props {
+export interface ExecutiveChatbotProps {
   isOpen: boolean;
   onToggle: () => void;
   seedPrompt?: string;
   onClearSeed?: () => void;
+  workspace?: SaasWorkspace;
+  tenant?: string;
+  isOperator?: boolean;
+  userEmail?: string;
+  userName?: string;
 }
 
-const KNOWLEDGE_RESPONSES: Record<string, string> = {
-  exceptions:
-    "There are 3 active exceptions this morning:\n1. Group Capex Variance in Region 1 (+6.8% over threshold due to Kikuyu linac bunker civil works, absorbed within contingency reserve).\n2. NHIF Aged Receivables Overdue (KSh 14.8M >60 days across Region 2 public schemes; MoH liaison meeting scheduled).\n3. Jubilee Corporate Tariff Renewal (standardized rate-card ready for your endorsement).",
-  ebitda:
-    "Group EBITDA is currently at 87.8% (KSh 31.5M), exceeding the approved budget target of 80.2% by +7.6 percentage points. Kikuyu leads with 24.2% margin (KSh 15.1M EBITDA), followed by Meru at 21.5% and Bungoma at 19.8%.",
-  capex:
-    "Region 1 capex variance is +6.8% over quarterly budget, driven by lead shielding and civil bunker works for the Kikuyu oncology linac accelerator. The KSh 8.2M delta is fully covered by the approved group capex contingency pool.",
-  receivables:
-    "NHIF receivables over 60 days total KSh 14.8M across Western and Rift public schemes (Eldoret KSh 6.4M, Bungoma KSh 5.2M, Migori KSh 3.2M). Reconciliations are completed, and a bilateral liaison session with the Ministry of Health is scheduled for next Tuesday.",
-  decisions:
-    "There are 4 pending executive decisions in your queue:\n1. Board Audit & Risk Committee Q3 review pack sign-off (Due Tomorrow - Critical)\n2. Jubilee & AAR Strategic Agreement endorsement (Due Sep 12 - High)\n3. Eldoret Cath Lab Phase-1 capex proposal KSh 18.5M (Due Sep 16 - High)\n4. Hospital Medical Director KSh 6.2M incentive pool (Due Sep 18 - Medium)",
-  occupancy:
-    "Group bed occupancy is at 87.0% across all 6 hospitals against a target of 90.5% (-0.4 pp vs Jun 2026). Kikuyu is at 92.4%, Meru at 88.6%, while Western facilities average 83.5% due to surgical scheduling adjustments.",
-};
+export function ExecutiveChatbot({
+  isOpen,
+  onToggle,
+  seedPrompt,
+  onClearSeed,
+  workspace,
+  tenant,
+  isOperator = false,
+  userEmail = "",
+  userName = "",
+}: ExecutiveChatbotProps) {
+  // Determine active role title & scope
+  const { roleTitle, scopeTitle, isManager, allowedKpis } = useMemo(() => {
+    if (isOperator) {
+      return {
+        roleTitle: "Platform Operator (Super Admin)",
+        scopeTitle: "SaaS Platform Scope",
+        isManager: true,
+        allowedKpis: [],
+      };
+    }
 
-export function ExecutiveChatbot({ isOpen, onToggle, seedPrompt, onClearSeed }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
+    if (workspace?.organization.owner) {
+      return {
+        roleTitle: "Organization Admin (Manager)",
+        scopeTitle: workspace.organization.name,
+        isManager: true,
+        allowedKpis: workspace.kpis ?? [],
+      };
+    }
+
+    // Role-scoped member: find roles assigned to this user
+    const currentMember = workspace?.members?.find(
+      (m) => m.email?.toLowerCase() === userEmail?.toLowerCase(),
+    );
+    const roleNames = (
+      currentMember?.roleIds
+        ?.map((rid) => workspace?.roles?.find((r) => r.id === rid)?.name)
+        .filter(Boolean) as string[]
+    ) ?? [];
+
+    const effectiveRole = roleNames.length > 0 ? roleNames.join(", ") : "Role Member";
+
+    return {
+      roleTitle: effectiveRole,
+      scopeTitle: workspace?.organization.name ?? "Organization",
+      isManager: false,
+      allowedKpis: workspace?.kpis ?? [],
+    };
+  }, [isOperator, workspace, userEmail]);
+
+  const welcomeMessage = useMemo(() => {
+    const greeting = userName || (isManager ? (isOperator ? "Platform Operator" : "Organization Admin") : roleTitle);
+    return `Hello, ${greeting}. I am your Role-Scoped AI Assistant for ${scopeTitle}.
+
+🔒 Authorized under: ${roleTitle}
+Scope: ${scopeTitle}
+
+I strictly provide answers, telemetry, and metrics authorized for your role. How can I assist you today?`;
+  }, [userName, isManager, isOperator, roleTitle, scopeTitle]);
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
     {
       id: "m-init",
       sender: "bot",
-      text: "Good morning, Chairman. I am your Executive AI Assistant for the Command Center. How can I assist with your Morning Brief or decision queue today?",
-      time: "08:30 AM",
+      text: welcomeMessage,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      roleBadge: roleTitle,
     },
   ]);
+
+  // Update initial message if role context becomes available
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0]?.id === "m-init") {
+        return [
+          {
+            id: "m-init",
+            sender: "bot",
+            text: welcomeMessage,
+            time: prev[0].time,
+            roleBadge: roleTitle,
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [welcomeMessage, roleTitle]);
+
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (seedPrompt) {
       if (!isOpen) onToggle();
-      handleSend(seedPrompt);
+      void handleSend(seedPrompt);
       onClearSeed?.();
     }
   }, [seedPrompt]);
@@ -55,94 +132,248 @@ export function ExecutiveChatbot({ isOpen, onToggle, seedPrompt, onClearSeed }: 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const q = (textToSend || input).trim();
-    if (!q) return;
+    if (!q || loading) return;
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
       sender: "user",
       text: q,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: timeStr,
     };
 
     setMessages((prev) => [...prev, userMsg]);
     if (!textToSend) setInput("");
+    setLoading(true);
 
-    // Simulate smart context response
-    setTimeout(() => {
-      const lower = q.toLowerCase();
-      let reply =
-        "All figures reflect verified executive reporting across the 6 Lifecare facilities as of July 2026. Data provenance: illustrative verified.";
+    try {
+      // 1. Send query to role-scoped backend endpoint
+      const askUrl = isOperator
+        ? "/api/control/ask"
+        : tenant
+        ? `/api/saas/${tenant}/ask`
+        : "";
 
-      if (lower.includes("exception") || lower.includes("attention")) {
-        reply = KNOWLEDGE_RESPONSES.exceptions ?? reply;
-      } else if (lower.includes("ebitda") || lower.includes("profit") || lower.includes("margin")) {
-        reply = KNOWLEDGE_RESPONSES.ebitda ?? reply;
-      } else if (lower.includes("capex") || lower.includes("linac") || lower.includes("bunker") || lower.includes("variance")) {
-        reply = KNOWLEDGE_RESPONSES.capex ?? reply;
-      } else if (lower.includes("nhif") || lower.includes("receivable") || lower.includes("overdue") || lower.includes("claim")) {
-        reply = KNOWLEDGE_RESPONSES.receivables ?? reply;
-      } else if (lower.includes("decision") || lower.includes("queue") || lower.includes("sign") || lower.includes("pending")) {
-        reply = KNOWLEDGE_RESPONSES.decisions ?? reply;
-      } else if (lower.includes("bed") || lower.includes("occupancy") || lower.includes("capacity")) {
-        reply = KNOWLEDGE_RESPONSES.occupancy ?? reply;
+      if (askUrl) {
+        const response = await request(askUrl, WorkspaceAskResponseSchema, { question: q });
+
+        const botMsg: ChatMessage = {
+          id: `b-${Date.now()}`,
+          sender: "bot",
+          text: response.answer,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          roleBadge: response.roleBadge || roleTitle,
+          facts: response.facts,
+          sources: response.sources,
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        return;
       }
+    } catch {
+      // Fall through to strict client-side role enforcement if offline / mock mode
+    } finally {
+      setLoading(false);
+    }
 
-      const botMsg: ChatMessage = {
-        id: `b-${Date.now()}`,
-        sender: "bot",
-        text: reply,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, botMsg]);
-    }, 450);
+    // 2. Client-side Role-Scoped Security Guard (ensures chatbot NEVER leaks data apart from role)
+    const lower = q.toLowerCase();
+    let reply = "";
+    let isRestricted = false;
+
+    if (!isManager) {
+      // NON-ADMIN / ROLE-SCOPED MEMBER:
+      // Can ONLY see KPIs in their role grants
+      const mentionsAllowedKpi = allowedKpis.find((k) =>
+        lower.includes(k.name.toLowerCase()) || lower.includes(k.description.toLowerCase())
+      );
+
+      // Sensitive group metrics that regular roles must NOT see
+      const isRestrictedTopic =
+        lower.includes("ebitda") ||
+        lower.includes("profit") ||
+        lower.includes("capex") ||
+        lower.includes("salary") ||
+        lower.includes("compensation") ||
+        lower.includes("board meeting") ||
+        lower.includes("revenue across all") ||
+        lower.includes("other branch");
+
+      if (isRestrictedTopic && !mentionsAllowedKpi) {
+        reply = `🔒 Role Access Restriction:
+Under your assigned role as "${roleTitle}", you are only authorized to access data and metrics assigned to your role:
+${allowedKpis.length > 0 ? allowedKpis.map((k) => `• ${k.name}`).join("\n") : "• No KPI metrics currently assigned to this role."}
+
+I cannot retrieve, compute, or disclose financial, capex, or executive data outside your role's scope.`;
+        isRestricted = true;
+      } else if (mentionsAllowedKpi) {
+        const matchingResult = workspace?.results?.find((r) => r.kpiId === mentionsAllowedKpi.id);
+        const displayVal = matchingResult?.value ?? "No figures reported yet";
+        const targetVal = mentionsAllowedKpi.target ? ` (Target: ${mentionsAllowedKpi.target})` : "";
+        reply = `Authorized data for "${mentionsAllowedKpi.name}" (${mentionsAllowedKpi.unit}):
+Current Value: ${displayVal}${targetVal}
+Direction: ${mentionsAllowedKpi.direction === "higher" ? "Higher is better" : "Lower is better"}
+Status: ${matchingResult ? "Verified" : "Pending batch data upload"}`;
+      } else {
+        reply = `Under your role "${roleTitle}", you have access to:
+${allowedKpis.length > 0 ? allowedKpis.map((k) => `• ${k.name} (${k.unit})`).join("\n") : "• No assigned KPIs."}
+
+Ask a question specific to one of your authorized metrics above.`;
+      }
+    } else if (workspace?.organization.owner) {
+      // ORGANIZATION ADMIN (MANAGER OF ORG FOR PLATFORM)
+      if (lower.includes("role") || lower.includes("permission") || lower.includes("access")) {
+        reply = `As Organization Admin, you manage roles and access for ${workspace.organization.name}:
+• ${workspace.roles.length} roles configured: ${workspace.roles.map((r) => r.name).join(", ")}.
+• You can create new roles, set role capabilities (view, act, submit, approve, configure), and assign which KPIs each role can see.
+• Under each role, you can create employee logins: you set their email, and a temporary ID and password is generated for you to provide directly to the employee.`;
+      } else if (lower.includes("kpi") || lower.includes("catalog") || lower.includes("custom")) {
+        reply = `As Organization Admin, you manage KPIs for ${workspace.organization.name}:
+• ${workspace.kpis.length} active KPIs in your organization.
+• Predefined KPI Catalog: You can browse 592 predefined metrics library (Clinical, Financial, Operational) and add them to your org in 1 click.
+• Custom KPI Builder: You can build custom KPIs with custom formulas, directions, target tolerances, and base measures.`;
+      } else if (lower.includes("password") || lower.includes("login") || lower.includes("temp") || lower.includes("credential") || lower.includes("people")) {
+        reply = `Employee Logins & Credential Management:
+• Your organization has ${workspace.members.length} members with credentials.
+• When you add an employee login to a role, a temporary Login ID and password is generated for you to provide directly to the user.
+• You have full access to view employee emails, reset temporary passwords, or change their assigned roles anytime in Roles & Permissions.`;
+      } else if (lower.includes("approval") || lower.includes("batch") || lower.includes("data") || lower.includes("csv")) {
+        reply = `Data Ingestion & Approvals:
+• ${workspace.results.length} KPI figures are currently active.
+• You can import CSV data or review submitted batch periods in "Data & Approvals".
+• As Organization Admin, you can review, verify, and approve batch submissions before figures are published.`;
+      } else {
+        reply = `Organization Management Overview (${workspace.organization.name}):
+• Active Roles: ${workspace.roles.length} (${workspace.roles.map((r) => r.name).join(", ")})
+• Active KPIs: ${workspace.kpis.length} (${workspace.kpis.filter((k) => k.target !== null).length} with targets)
+• Team Members: ${workspace.members.length} with logins
+• Structure: ${workspace.units.length} facilities/departments configured
+
+How would you like to manage your organization's roles, KPIs, credentials, or data?`;
+      }
+    } else {
+      // PLATFORM OPERATOR
+      reply = `SaaS Platform Management Overview:
+• Active operator session monitoring all client organizations.
+• You can manage client subscriptions, review onboarding status, and monitor platform recurring revenues in the Operator dashboard.`;
+    }
+
+    const botMsg: ChatMessage = {
+      id: `b-${Date.now()}`,
+      sender: "bot",
+      text: reply,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      roleBadge: roleTitle,
+      isRestricted,
+    };
+    setMessages((prev) => [...prev, botMsg]);
   };
+
+  // Suggested questions based on role
+  const suggestions = useMemo(() => {
+    if (isOperator) {
+      return [
+        "Show platform revenue and active subscriptions",
+        "Which client organizations are currently active?",
+        "Show recent tenant onboarding events",
+      ];
+    }
+    if (isManager) {
+      return [
+        "Which roles and permissions are configured?",
+        "How do I create an employee login with temporary password?",
+        "Show our active predefined and custom KPIs",
+        "What data batches are pending approval?",
+      ];
+    }
+    // Specific role
+    if (allowedKpis.length > 0) {
+      return [
+        `How is ${allowedKpis[0]!.name} performing?`,
+        "Show my role-authorized KPIs and targets",
+        "What are my pending actions?",
+      ];
+    }
+    return [
+      "What are my role permissions?",
+      "Show my authorized data scope",
+    ];
+  }, [isOperator, isManager, allowedKpis]);
 
   return (
     <>
-      {/* ─── Floating Launcher in Bottom-Right Corner (Strict requirement) ─── */}
+      {/* ─── Floating Launcher Strictly in Bottom-Right Corner ─── */}
       <button
         type="button"
         className="exec-floating-chatbot-launcher"
         onClick={onToggle}
-        aria-label="Open AI Assistant"
+        aria-label="Open Role-Scoped AI Assistant"
       >
         <Sparkles size={18} color="#38bdf8" />
-        <span>{isOpen ? "Close Assistant" : "✦ Ask AI Assistant"}</span>
+        <span>{isOpen ? "Close Assistant" : `✦ Ask AI Assistant (${roleTitle.slice(0, 18)})`}</span>
       </button>
 
-      {/* ─── Sliding AI Assistant Panel in Bottom-Right Corner ─── */}
+      {/* ─── Floating AI Assistant Panel in Bottom-Right Corner ─── */}
       {isOpen && (
-        <div className="exec-chatbot-panel" role="region" aria-label="Command Center Assistant">
+        <div className="exec-chatbot-panel" role="region" aria-label="Role-Scoped AI Assistant">
           <div className="exec-chatbot-header">
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, overflow: "hidden" }}>
               <div
                 style={{
-                  width: 30,
-                  height: 30,
+                  width: 32,
+                  height: 32,
                   borderRadius: "50%",
                   background: "#2563eb",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
-                <Sparkles size={16} color="#ffffff" />
+                <Sparkles size={17} color="#ffffff" />
               </div>
-              <div>
-                <h3 style={{ fontSize: 14, fontWeight: 800, margin: 0, color: "#ffffff" }}>
-                  Command Center Assistant
-                </h3>
-                <span style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>
-                  Answering as Chairman (Group)
-                </span>
+              <div style={{ overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <h3 style={{ fontSize: 13.5, fontWeight: 800, margin: 0, color: "#ffffff" }}>
+                    Role-Scoped Assistant
+                  </h3>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      background: "#1e3a8a",
+                      color: "#93c5fd",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                    }}
+                  >
+                    <Lock size={10} /> Role Scoped
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#93c5fd",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={`${roleTitle} · ${scopeTitle}`}
+                >
+                  {roleTitle} · {scopeTitle}
+                </div>
               </div>
             </div>
             <button
               type="button"
               onClick={onToggle}
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
+              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}
               aria-label="Close"
             >
               <X size={18} />
@@ -151,12 +382,59 @@ export function ExecutiveChatbot({ isOpen, onToggle, seedPrompt, onClearSeed }: 
 
           <div className="exec-chatbot-messages">
             {messages.map((m) => (
-              <div key={m.id} className={`exec-chat-bubble ${m.sender}`}>
+              <div
+                key={m.id}
+                className={`exec-chat-bubble ${m.sender}`}
+                style={
+                  m.isRestricted
+                    ? { background: "#fff1f2", border: "1px solid #fecdd3", color: "#9f1239" }
+                    : undefined
+                }
+              >
+                {m.roleBadge && m.sender === "bot" && (
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: m.isRestricted ? "#e11d48" : "#2563eb",
+                      marginBottom: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <ShieldCheck size={12} />
+                    <span>{m.roleBadge}</span>
+                  </div>
+                )}
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+
+                {/* Facts returned from verified backend calculation */}
+                {m.facts && m.facts.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {m.facts.slice(0, 6).map((f, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          background: "#f1f5f9",
+                          color: "#334155",
+                          border: "1px solid #cbd5e1",
+                        }}
+                      >
+                        <strong>{f.label}:</strong> {f.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div
                   style={{
                     fontSize: 10,
-                    marginTop: 4,
+                    marginTop: 6,
                     textAlign: m.sender === "user" ? "right" : "left",
                     opacity: 0.65,
                   }}
@@ -166,39 +444,28 @@ export function ExecutiveChatbot({ isOpen, onToggle, seedPrompt, onClearSeed }: 
               </div>
             ))}
 
+            {loading && (
+              <div className="exec-chat-bubble bot" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Sparkles size={14} className="animate-spin" color="#2563eb" />
+                <span style={{ fontSize: 12, color: "#64748b" }}>Querying role-authorized data…</span>
+              </div>
+            )}
+
             {messages.length <= 2 && (
               <div className="exec-chat-starters">
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-                  Suggested Questions
+                  Suggested for your role
                 </span>
-                <button
-                  type="button"
-                  className="exec-chat-starter-btn"
-                  onClick={() => handleSend("What exceptions require my executive attention this morning?")}
-                >
-                  What exceptions require my attention this morning?
-                </button>
-                <button
-                  type="button"
-                  className="exec-chat-starter-btn"
-                  onClick={() => handleSend("Summarize Group EBITDA vs budget")}
-                >
-                  Summarize Group EBITDA vs budget
-                </button>
-                <button
-                  type="button"
-                  className="exec-chat-starter-btn"
-                  onClick={() => handleSend("Explain the NHIF aged receivables overdue")}
-                >
-                  Explain the NHIF aged receivables overdue
-                </button>
-                <button
-                  type="button"
-                  className="exec-chat-starter-btn"
-                  onClick={() => handleSend("What are the 4 pending executive decisions in my queue?")}
-                >
-                  What are the 4 pending executive decisions?
-                </button>
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="exec-chat-starter-btn"
+                    onClick={() => void handleSend(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -208,21 +475,22 @@ export function ExecutiveChatbot({ isOpen, onToggle, seedPrompt, onClearSeed }: 
             className="exec-chatbot-composer"
             onSubmit={(e) => {
               e.preventDefault();
-              handleSend();
+              void handleSend();
             }}
           >
             <input
               type="text"
               className="exec-chatbot-input"
-              placeholder="Ask about facilities, EBITDA, capex, or decisions…"
+              placeholder={`Ask about your authorized ${isManager ? "organization & roles" : "metrics"}…`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              disabled={loading}
             />
             <button
               type="submit"
               className="exec-btn-primary"
               style={{ padding: "8px 14px", borderRadius: 8 }}
-              disabled={!input.trim()}
+              disabled={!input.trim() || loading}
             >
               <Send size={15} />
             </button>

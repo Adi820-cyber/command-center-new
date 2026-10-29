@@ -40,6 +40,7 @@ export function OrgHub({
   governance,
   tenant,
   reload,
+  initialSection = "Overview",
 }: {
   workspace: SaasWorkspace;
   change: Change;
@@ -50,9 +51,17 @@ export function OrgHub({
   /** Opens another workspace tab, such as "KPI library". */
   goto: (tab: "KPI library" | "Data & approvals" | "Dashboard") => void;
   /** Approval policy and setup proposals, owned by the page. */
-  governance: ReactNode;
+  governance?: ReactNode;
+  /** Initial section to open */
+  initialSection?: Section;
 }) {
-  const [section, setSection] = useState<Section>("Overview");
+  const [section, setSection] = useState<Section>(initialSection);
+
+  useEffect(() => {
+    if (initialSection) {
+      setSection(initialSection);
+    }
+  }, [initialSection]);
   return (
     <>
       <nav className="hub-tabs" aria-label="Organization">
