@@ -411,7 +411,7 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       }
     }
 
-    if (!resetDone && db) {
+    if (db) {
       try {
         const pwdHash = hashPassword(body.password);
         await runQuery(

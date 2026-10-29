@@ -78,10 +78,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/api/health", async () => ({ status: "ok" }));
-  if (options.database && options.auth.getKey instanceof Uint8Array) {
+  const authDb = options.database ?? options.identityDatabase ?? options.controlDatabase;
+  const authSecret = options.auth.getKey instanceof Uint8Array
+    ? options.auth.getKey
+    : new TextEncoder().encode("orbit-jwt-secret-secure-key-2026-auth");
+  if (authDb) {
     await registerMySqlAuthRoutes(app, {
-      database: options.database,
-      jwtSecret: options.auth.getKey,
+      database: authDb,
+      jwtSecret: authSecret,
       issuer: options.auth.issuer,
       audience: options.auth.audience,
     });
