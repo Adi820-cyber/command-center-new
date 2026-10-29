@@ -160,7 +160,11 @@ export async function signInWithPassword(email: string, password: string): Promi
       let detailMsg: string | undefined;
       try {
         const data = await res.json();
-        if (data?.error?.message && !data.error.message.includes("does not exist")) {
+        if (
+          data?.error?.message &&
+          !data.error.message.includes("does not exist") &&
+          !data.error.message.includes("internal error")
+        ) {
           detailMsg = data.error.message;
         }
       } catch {}

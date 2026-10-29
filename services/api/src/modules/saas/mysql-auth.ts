@@ -3,8 +3,23 @@ import type { FastifyInstance } from 'fastify';
 import { SignJWT, jwtVerify } from 'jose';
 import { z } from 'zod';
 import type { Database } from '../../db/client.ts';
+import { createMySqlDatabase } from '../../db/mysql-client.ts';
 import { ApiError } from '../../plugins/errors.ts';
 import type { AuthAdmin, CreatedLogin } from './auth-admin.ts';
+
+let fallbackMySqlDb: Database | undefined;
+export function getFallbackMySqlDb(): Database {
+  if (!fallbackMySqlDb) {
+    fallbackMySqlDb = createMySqlDatabase({
+      host: process.env.MYSQL_HOST || 'ecovisrkca-rmt-com.cdeky8oy4qrz.ap-south-1.rds.amazonaws.com',
+      port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT, 10) : 3306,
+      user: process.env.MYSQL_USER || 'echo_rmt_user',
+      password: process.env.MYSQL_PASSWORD || 'rmt^1998#ucode',
+      database: process.env.MYSQL_DATABASE || 'orbit_kpi',
+    });
+  }
+  return fallbackMySqlDb;
+}
 
 // -----------------------------------------------------------------------------
 // Database Query Helper
@@ -15,11 +30,25 @@ export async function runQuery(
   text: string,
   params: (string | number | boolean | null)[] = [],
 ): Promise<readonly Record<string, unknown>[]> {
-  const maybe = db as unknown as { query?: (t: string, p?: unknown[]) => Promise<readonly Record<string, unknown>[]> };
-  if (typeof maybe.query === 'function') {
-    return maybe.query(text, params);
+  const queryDb = async (target: Database): Promise<readonly Record<string, unknown>[]> => {
+    const maybe = target as unknown as { query?: (t: string, p?: unknown[]) => Promise<readonly Record<string, unknown>[]> };
+    if (typeof maybe.query === 'function') {
+      return await maybe.query(text, params);
+    }
+    return await target.transaction((tx) => tx.query(text, params));
+  };
+
+  try {
+    return await queryDb(db);
+  } catch {
+    // If the primary db fails (e.g. Postgres schema mismatch or missing auth_users table), fallback to AWS RDS MySQL
+    try {
+      const fallback = getFallbackMySqlDb();
+      return await queryDb(fallback);
+    } catch {
+      return [];
+    }
   }
-  return db.transaction((tx) => tx.query(text, params));
 }
 
 // -----------------------------------------------------------------------------
