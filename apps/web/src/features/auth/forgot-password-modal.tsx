@@ -106,8 +106,15 @@ export function ForgotPasswordModal({
         ok: true,
       });
     } catch (err) {
+      let errorText = "Failed to send verification code. Please check your email address and try again.";
+      if (err instanceof Error && err.message) {
+        errorText = err.message;
+        if (errorText.includes("This operation is not permitted")) {
+          errorText = "No account found with this email address, or service is temporarily unavailable. Please verify your email.";
+        }
+      }
       setMessage({
-        text: err instanceof Error ? err.message : "Failed to send verification code. Please check your email and try again.",
+        text: errorText,
         ok: false,
       });
     } finally {

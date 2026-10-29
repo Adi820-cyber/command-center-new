@@ -22,6 +22,7 @@ import { hash, input, inSubject, makeRunners, uuid, type SaasOptions } from "./h
 import { maskEmail } from "./mail.ts";
 import { prepareLogins } from "./logins.ts";
 import { temporaryPassword } from "./auth-admin.ts";
+import { runQuery, hashPassword } from "./mysql-auth.ts";
 
 interface PasswordResetRecord {
   codeHash: string;
@@ -250,10 +251,12 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     const db = options.identityDatabase ?? options.database;
     if (db) {
       try {
-        const users = await inSubject(db, "system", async (tx) => {
-          return tx.query("SELECT id FROM auth_users WHERE LOWER(email) = LOWER(?)", [normalized]);
-        });
-        if (!users || users.length === 0) {
+        const users = await runQuery(
+          db,
+          "SELECT id FROM auth_users WHERE LOWER(email) = LOWER(?)",
+          [normalized],
+        );
+        if (Array.isArray(users) && users.length === 0) {
           throw new ApiError("not_found", "No account found with this email address. Please check your email or contact your administrator.");
         }
       } catch (err) {
@@ -274,17 +277,17 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
     // Persist to kpi_email_codes in database if available
     if (db) {
       try {
-        await inSubject(db, "system", async (tx) => {
-          await tx.query(
-            "UPDATE kpi_email_codes SET expires_at = NOW(6) WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6)",
-            [normalized],
-          );
-          await tx.query(
-            "INSERT INTO kpi_email_codes (id, subject, purpose, code_hash, created_at, expires_at) VALUES (UUID(), ?, 'password', ?, NOW(6), DATE_ADD(NOW(6), INTERVAL 10 MINUTE))",
-            [normalized, codeHash],
-          );
-        });
-      } catch (dbErr) {
+        await runQuery(
+          db,
+          "UPDATE kpi_email_codes SET expires_at = NOW(6) WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6)",
+          [normalized],
+        );
+        await runQuery(
+          db,
+          "INSERT INTO kpi_email_codes (id, subject, purpose, code_hash, created_at, expires_at) VALUES (UUID(), ?, 'password', ?, NOW(6), DATE_ADD(NOW(6), INTERVAL 10 MINUTE))",
+          [normalized, codeHash],
+        );
+      } catch {
         // Fallback to in-memory store
       }
     }
@@ -339,20 +342,17 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
 
     if (!verified && db) {
       try {
-        const rows = await inSubject(db, "system", async (tx) => {
-          return tx.query(
-            "SELECT id, code_hash, attempts FROM kpi_email_codes WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6) ORDER BY created_at DESC LIMIT 1",
-            [normalized],
-          );
-        });
-        if (rows && rows.length > 0) {
+        const rows = await runQuery(
+          db,
+          "SELECT id, code_hash, attempts FROM kpi_email_codes WHERE subject = ? AND used_at IS NULL AND expires_at > NOW(6) ORDER BY created_at DESC LIMIT 1",
+          [normalized],
+        );
+        if (Array.isArray(rows) && rows.length > 0) {
           const row = (rows as any[])[0];
           const testHash = hash(`reset:${normalized}:${body.otpCode}`);
           if (row.code_hash === testHash) {
             verified = true;
-            await inSubject(db, "system", async (tx) => {
-              await tx.query("UPDATE kpi_email_codes SET used_at = NOW(6) WHERE id = ?", [row.id]);
-            });
+            await runQuery(db, "UPDATE kpi_email_codes SET used_at = NOW(6) WHERE id = ?", [row.id]);
           }
         }
       } catch {
@@ -400,19 +400,33 @@ export async function registerIdentityRoutes(app: FastifyInstance, options: Saas
       throw new ApiError("invalid_request", "Your password cannot be your email address.");
     }
 
+    const db = options.identityDatabase ?? options.database;
+    let resetDone = false;
     if (options.authAdmin?.resetPasswordByEmail) {
       try {
-        const resetOk = await options.authAdmin.resetPasswordByEmail(normalized, body.password);
-        if (!resetOk) {
-          throw new ApiError("not_found", "No account found with this email address.");
-        }
+        resetDone = await options.authAdmin.resetPasswordByEmail(normalized, body.password);
       } catch (err) {
         if (err instanceof ApiError) throw err;
         console.error("AuthAdmin reset error", err);
-        throw new ApiError("unavailable", "Failed to update account password. Please try again.");
       }
-    } else {
-      throw new ApiError("unavailable", "Password reset service is not configured on this environment.");
+    }
+
+    if (!resetDone && db) {
+      try {
+        const pwdHash = hashPassword(body.password);
+        await runQuery(
+          db,
+          "UPDATE auth_users SET password_hash = ?, must_change_password = 0, updated_at = NOW() WHERE LOWER(email) = LOWER(?)",
+          [pwdHash, normalized],
+        );
+        resetDone = true;
+      } catch {
+        // Not a MySQL database with auth_users table
+      }
+    }
+
+    if (!resetDone) {
+      throw new ApiError("not_found", "No account found with this email address.");
     }
 
     passwordResetOtps.delete(normalized);

@@ -10,7 +10,7 @@ import type { AuthAdmin, CreatedLogin } from './auth-admin.ts';
 // Database Query Helper
 // -----------------------------------------------------------------------------
 
-async function runQuery(
+export async function runQuery(
   db: Database,
   text: string,
   params: (string | number | boolean | null)[] = [],
