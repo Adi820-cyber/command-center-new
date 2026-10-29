@@ -23,21 +23,41 @@ import {
 import { getAuthClient, getCurrentSession, signOut } from "../../lib/auth";
 import { mustChangePassword } from "../auth/change-password-route";
 import { mutate, request } from "./client";
-import { AskPanel } from "./ask-panel";
 import { CatalogBrowser } from "./catalog-browser";
 import { CsvImport } from "./csv-import";
 import { TargetEditor } from "./target-editor";
 import { CustomKpiForm } from "./custom-kpi";
 import { KpiActions } from "./kpi-actions";
-import { Dashboard } from "./dashboard";
 import { OrgHub } from "./org-hub";
-import { initialOf, roleLabel, viewingAs } from "./identity";
+import { initialOf } from "./identity";
 import { SaaSOrganizationsManager } from "../operator/saas-orgs-manager";
 import { SaaSRevenueDashboard, type ControlOrg } from "../operator/saas-revenue-dashboard";
 import { UserProfileModal, loadStoredProfile } from "./user-profile-modal";
-import { Settings } from "lucide-react";
+import {
+  Settings,
+  LayoutGrid,
+  BarChart3,
+  Inbox,
+  Building2,
+  FileSpreadsheet,
+  ShieldAlert,
+  CheckSquare,
+  RotateCcw,
+} from "lucide-react";
+import { ExecutiveMorningBrief } from "./executive-morning-brief";
+import { ExecutiveAuxViews } from "./executive-aux-views";
+import { ExecutiveChatbot } from "./executive-chatbot";
+import "./executive.css";
 import "./v2.css";
+
 type Tab =
+  | "Morning Brief"
+  | "KPI Dashboard"
+  | "Priority Inbox"
+  | "Facilities & COEs"
+  | "Board Meetings"
+  | "Project Risk"
+  | "KPI Explorer"
   | "Dashboard"
   | "Ask"
   | "Data & approvals"
@@ -47,19 +67,20 @@ type Tab =
   | "Activity"
   | "SaaS Orgs";
 
+const EXECUTIVE_NAV_ITEMS = [
+  { id: "Morning Brief" as Tab, label: "Morning Brief", icon: LayoutGrid },
+  { id: "KPI Dashboard" as Tab, label: "KPI Dashboard", icon: BarChart3 },
+  { id: "Priority Inbox" as Tab, label: "Priority Inbox / Prior...", icon: Inbox, badge: "8" },
+  { id: "Facilities & COEs" as Tab, label: "Facilities & COEs", icon: Building2 },
+  { id: "Board Meetings" as Tab, label: "Board Meetings & Follow...", icon: FileSpreadsheet },
+  { id: "Project Risk" as Tab, label: "Project Risk", icon: ShieldAlert },
+  { id: "KPI Explorer" as Tab, label: "KPI Explorer", icon: CheckSquare },
+];
+
 const OPERATOR_TABS: { tab: Tab; label: string; icon: string }[] = [
   { tab: "Dashboard", label: "Platform Revenues & KPIs", icon: "◫" },
   { tab: "SaaS Orgs", label: "SaaS All Organizations", icon: "◈" },
   { tab: "Activity", label: "Platform Activity & Audit", icon: "◷" },
-];
-
-const CUSTOMER_TABS: { tab: Tab; label: string; icon: string }[] = [
-  { tab: "Dashboard", label: "Dashboard", icon: "◫" },
-  { tab: "Data & approvals", label: "Data & approvals", icon: "⇅" },
-  { tab: "KPI library", label: "KPI library", icon: "◇" },
-  { tab: "Actions", label: "Actions", icon: "☑" },
-  { tab: "Organization", label: "Organization", icon: "◎" },
-  { tab: "Activity", label: "Activity", icon: "◷" },
 ];
 const text = (data: FormData, key: string) => {
   const value = data.get(key);
@@ -85,7 +106,7 @@ export function SaasRoute() {
   >([]);
   const [tenant, setTenant] = useState("");
   const [workspace, setWorkspace] = useState<SaasWorkspace>();
-  const [tab, setTab] = useState<Tab>("Dashboard");
+  const [tab, setTab] = useState<Tab>("Morning Brief");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -96,6 +117,7 @@ export function SaasRoute() {
   const [profileName, setProfileName] = useState("");
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isOperator, setIsOperator] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
   const reload = useCallback(async () => {
     if (!tenant) return;
     const current = generation.current;
@@ -106,7 +128,7 @@ export function SaasRoute() {
     ++generation.current;
     setWorkspace(undefined);
     setMessage("");
-    setTab("Dashboard");
+    setTab("Morning Brief");
     setLoading(!!id);
     setTenant(id);
   }, []);
@@ -191,7 +213,6 @@ export function SaasRoute() {
       .then((value) => {
         if (current !== generation.current) return;
         setWorkspace(value);
-        if (value.organization.owner) setTab("Organization");
       })
       .catch((e) => {
         if (current === generation.current) setMessage(e.message);
@@ -233,16 +254,12 @@ export function SaasRoute() {
   }
 
   return (
-    <div className="saas-shell">
-      <aside className="saas-sidebar">
-        <a className="saas-brand" href="/">
-          ◈{" "}
-          <span>
-            Command Center<small>PERFORMANCE WORKSPACE</small>
-          </span>
-        </a>
-
-        {isOperator ? (
+    <div className="exec-shell">
+      {isOperator ? (
+        <aside className="saas-sidebar">
+          <a className="saas-brand" href="/">
+            ◈ <span>Command Center<small>PERFORMANCE WORKSPACE</small></span>
+          </a>
           <div style={{ padding: "0 0 12px", borderBottom: "1px solid #e2e8f0", marginBottom: 12 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>
               Active Scope
@@ -252,161 +269,155 @@ export function SaasRoute() {
               <span>SaaS Platform Scope (All Orgs)</span>
             </div>
           </div>
-        ) : (
-          <Field title="Organization">
-            <select
-              aria-label="Organization"
-              value={tenant}
-              disabled={busy}
-              onChange={(e) => {
-                selectTenant(e.target.value);
+          <nav aria-label="Workspace">
+            {OPERATOR_TABS.map(({ tab: item, label, icon }) => (
+              <button
+                key={item}
+                className={tab === item ? "selected" : ""}
+                aria-current={tab === item ? "page" : undefined}
+                onClick={() => setTab(item)}
+              >
+                <span aria-hidden="true">{icon}</span>
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="saas-sidebar-footer">
+            <button
+              type="button"
+              className="whoami"
+              onClick={() => setProfileModalOpen(true)}
+              aria-label="Manage profile and account details"
+            >
+              <span className="whoami-avatar" aria-hidden="true">{initialOf(profileName || email)}</span>
+              <span className="whoami-text">
+                <strong title={email}>{profileName || email || "Signed in"}</strong>
+                <small>Platform Operator (Super Admin)</small>
+              </span>
+              <Settings className="w-4 h-4 whoami-edit-icon" aria-hidden="true" />
+            </button>
+            <button
+              onClick={() => void signOut().then(() => window.location.assign("/login"))}
+            >
+              Sign out
+            </button>
+          </div>
+        </aside>
+      ) : (
+        /* ─── Executive Midnight Navy Sidebar (Matching Image 1, 4, 5) ─── */
+        <aside className="exec-sidebar">
+          {/* Top Profile Card (Image 1) */}
+          <div className="exec-profile-card">
+            <div className="exec-avatar-circle">
+              {profileName ? initialOf(profileName) : "CH"}
+            </div>
+            <div className="exec-profile-info">
+              <span className="exec-profile-title">{profileName || "Chairman"}</span>
+              <span className="exec-profile-role">Chairman (Group)</span>
+            </div>
+          </div>
+
+          {/* Section Header */}
+          <div className="exec-sidebar-section-title">EXECUTIVE COMMAND</div>
+
+          {/* Navigation Items (Image 1) */}
+          <nav className="exec-nav-list" aria-label="Executive Command">
+            {EXECUTIVE_NAV_ITEMS.map((item) => {
+              const IconComp = item.icon;
+              const isActive = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`exec-nav-item ${isActive ? "active" : ""}`}
+                  onClick={() => setTab(item.id)}
+                >
+                  <IconComp className="exec-nav-icon" />
+                  <span className="exec-nav-label">{item.label}</span>
+                  {item.badge && <span className="exec-nav-badge">{item.badge}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Bottom-left corner Profile & Settings (Image 4 & 5 and User prompt) */}
+          <div className="exec-sidebar-footer">
+            <button
+              type="button"
+              className="exec-bottom-profile-btn"
+              onClick={() => setProfileModalOpen(true)}
+              title="Click to view profile & settings"
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: "#2563eb",
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  flexShrink: 0,
+                }}
+              >
+                {initialOf(profileName || email || "CH")}
+              </div>
+              <div style={{ flex: 1, overflow: "hidden" }}>
+                <div style={{ color: "#ffffff", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {profileName || email || "Chairman"}
+                </div>
+                <div style={{ fontSize: 11, color: "#60a5fa" }}>Profile &amp; Settings</div>
+              </div>
+              <Settings size={15} color="#94a3b8" />
+            </button>
+
+            <button
+              type="button"
+              className="exec-reset-btn"
+              onClick={() => {
+                setResetSignal((s) => s + 1);
+                setMessage("✓ Prototype demo state reset to baseline.");
+                setTimeout(() => setMessage(""), 3000);
               }}
             >
-              <option value="" disabled>
-                Select workspace
-              </option>
-              {organizations.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                  {o.status === "active" ? "" : ` (${o.status})`}
-                </option>
-              ))}
-            </select>
-          </Field>
+              <RotateCcw size={14} />
+              <span>Reset Prototype Demo</span>
+            </button>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
+              <span className="exec-version-tag">AfricareOS v3.2</span>
+              <button
+                type="button"
+                onClick={() => void signOut().then(() => window.location.assign("/login"))}
+                style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      <div className="exec-main">
+        {message && (
+          <div style={{ margin: "16px 28px 0", padding: "10px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", borderRadius: 8, fontWeight: 600, fontSize: 13 }}>
+            {message}
+          </div>
         )}
 
-        <nav aria-label="Workspace">
-          {isOperator
-            ? OPERATOR_TABS.map(({ tab: item, label, icon }) => (
-                <button
-                  key={item}
-                  className={tab === item ? "selected" : ""}
-                  aria-current={tab === item ? "page" : undefined}
-                  onClick={() => setTab(item)}
-                  style={
-                    item === "Dashboard" || item === "SaaS Orgs"
-                      ? {
-                          fontWeight: tab === item ? 700 : 600,
-                        }
-                      : undefined
-                  }
-                >
-                  <span aria-hidden="true">{icon}</span>
-                  {label}
-                </button>
-              ))
-            : CUSTOMER_TABS.map(({ tab: item, label, icon }) => (
-                <button
-                  key={item}
-                  className={tab === item ? "selected" : ""}
-                  aria-current={tab === item ? "page" : undefined}
-                  onClick={() => setTab(item)}
-                >
-                  <span aria-hidden="true">{icon}</span>
-                  {label}
-                </button>
-              ))}
-        </nav>
-
-        <div className="saas-sidebar-footer">
-          <button
-            type="button"
-            className="whoami"
-            onClick={() => setProfileModalOpen(true)}
-            aria-label="Manage profile and account details"
-            title="Click to update details and password"
-          >
-            <span className="whoami-avatar" aria-hidden="true">{initialOf(profileName || email)}</span>
-            <span className="whoami-text">
-              <strong title={email}>{profileName || email || "Signed in"}</strong>
-              <small>{isOperator ? "Platform Operator (Super Admin)" : (roleLabel(workspace?.me) || (closed ? closed.status : ""))}</small>
-              <small className="whoami-org">{isOperator ? "SaaS Platform Provider" : (workspace?.organization.name ?? closed?.name ?? "")}</small>
-            </span>
-            <Settings className="w-4 h-4 whoami-edit-icon" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setProfileModalOpen(true)}
-            style={{ textAlign: "center", fontSize: 12, padding: "7px 12px", background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
-          >
-            Account & Security Settings
-          </button>
-          <button
-            onClick={() =>
-              void signOut().then(() => window.location.assign("/login"))
-            }
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      <div className="saas-main">
-        <header className="saas-topbar">
-          <span>
-            {isOperator
-              ? "SaaS Platform Management"
-              : (workspace?.organization.name ?? "Your organization")}{" "}
-            <span className="muted">
-              {" "}
-              /{" "}
-              {tab === "SaaS Orgs"
-                ? "All Organizations"
-                : isOperator && tab === "Dashboard"
-                  ? "Platform Revenues & KPIs"
-                  : isOperator && tab === "Ask"
-                    ? "Platform AI Assistant"
-                    : isOperator && tab === "Activity"
-                      ? "Platform Audit & Activity"
-                      : tab}
-            </span>
-          </span>
-          <span className="saas-badge">
-            {isOperator
-              ? "Platform Provider (Super Admin)"
-              : workspace?.organization.owner
-                ? "Organization owner"
-                : "Member workspace"}
-          </span>
-        </header>
-
-        <main>
-          <div className="saas-page-heading">
-            <div>
-              <p className="eyebrow">
-                {isOperator
-                  ? "PLATFORM TELEMETRY · REVENUE & FINANCIAL KPIS · CLIENT MANAGEMENT"
-                  : "MEASURE · UNDERSTAND · ACT"}
-              </p>
-              <h1>
-                {isOperator
-                  ? tab === "Dashboard"
-                    ? "Platform Revenues & KPIs"
-                    : tab === "SaaS Orgs"
-                      ? "All Organizations (SaaS)"
-                      : tab === "Ask"
-                        ? "Platform AI Assistant"
-                        : "Platform Activity & Audit"
-                  : tab}
-              </h1>
-              <p className="muted">
-                {isOperator ? operatorDescription(tab) : description(tab)}
-                {!isOperator && tab === "Dashboard" && workspace ? ` ${viewingAs(workspace.me)}` : ""}
-              </p>
-            </div>
-            {!isOperator && (
-              <button
-                className="secondary"
-                onClick={() => setTab("Data & approvals")}
-              >
-                ＋ Submit data
-              </button>
-            )}
-          </div>
-          {message && <output className="saas-message">{message}</output>}
-
-          {/* ── Operator Views ── */}
-          {isOperator ? (
+        {/* ── Operator Views ── */}
+        {isOperator ? (
+          <main style={{ padding: 28 }}>
+            <header className="saas-topbar" style={{ marginBottom: 20 }}>
+              <div>
+                <span>SaaS Platform Management</span>
+                <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>{operatorDescription(tab)}</p>
+              </div>
+              <span className="saas-badge">Platform Provider (Super Admin)</span>
+            </header>
             <div className="saas-content">
               {tab === "Dashboard" && (
                 <SaaSRevenueDashboard
@@ -426,92 +437,61 @@ export function SaasRoute() {
                   operatorEmail={email}
                 />
               )}
-              {tab === "Ask" && (
-                <AskPanel
-                  endpoint="/api/control/ask"
-                  seed={askSeed}
-                  onSeedUsed={() => setAskSeed("")}
-                  title="Platform AI Assistant"
-                  note="This platform operator assistant sees onboarding, subscription plans, platform revenues, and headcounts. It cannot access customer internal clinical data."
-                  starters={[
-                    "Give me a platform revenue summary",
-                    "Which owners still need to reset their password?",
-                    "Summarize subscription plans",
-                    "How many organizations were onboarded recently?",
-                    "What data can the operator see?",
-                  ]}
-                />
-              )}
               {tab === "Activity" && <OperatorActivity />}
             </div>
-          ) : (
-            /* ── Customer / Tenant Views ── */
-            <>
-              {loading && !closed && <Empty>Loading your authorized workspace…</Empty>}
-              {!loading && !tenant && (
-                <Empty>
-                  <h2>Your workspace starts with an invitation</h2>
-                  <p>
-                    Ask your organization owner for an invitation. Platform
-                    operators can provision an empty organization.
-                  </p>
-                  <a href="/login">Sign in with an authorized account</a>
-                </Empty>
-              )}
-              {closed && (
-                <Empty>
-                  <div className="status-panel">
-                    <p className="eyebrow">{closed.name.toUpperCase()}</p>
-                    <h2>
-                      {closed.status === "pending"
-                        ? "Your organization is waiting to be activated"
-                        : closed.status === "suspended"
-                          ? "Your organization is suspended"
-                          : "This organization has been removed"}
-                    </h2>
-                    <p>
-                      {closed.status === "pending"
-                        ? "Your service provider is setting it up. You will be able to sign in and work as soon as they activate it."
-                        : closed.status === "suspended"
-                          ? "Access has been paused. Nothing has been lost. Contact your service provider to have it restored."
-                          : "It is no longer available. Contact your service provider if you think this is a mistake."}
-                    </p>
-                    <button type="button" onClick={() => void signOut().then(() => window.location.assign("/login"))}>
-                      Sign out
-                    </button>
+          </main>
+        ) : (
+          /* ── Executive Leadership Views ── */
+          <>
+            <p className="orbit-visually-hidden">{description(tab)}</p>
+            {loading && !workspace && (
+              <div style={{ padding: "12px 28px", color: "#64748b", fontSize: 13 }}>
+                Loading authorized workspace…
+              </div>
+            )}
+            {busy && (
+              <div style={{ padding: "4px 28px", color: "#2563eb", fontSize: 12 }}>
+                Updating workspace…
+              </div>
+            )}
+            {tab === "Morning Brief" && (
+              <ExecutiveMorningBrief
+                onOpenChatbot={(seed) => {
+                  setAskSeed(seed || "");
+                  setAssistantOpen(true);
+                }}
+                onNavigateTab={(t) => setTab(t as Tab)}
+                resetSignal={resetSignal}
+              />
+            )}
+
+            {(tab === "KPI Dashboard" ||
+              tab === "Priority Inbox" ||
+              tab === "Facilities & COEs" ||
+              tab === "Board Meetings" ||
+              tab === "Project Risk" ||
+              tab === "KPI Explorer") && (
+              <ExecutiveAuxViews
+                tab={tab}
+                onBackToBrief={() => setTab("Morning Brief")}
+                onOpenChatbot={(seed) => {
+                  setAskSeed(seed || "");
+                  setAssistantOpen(true);
+                }}
+              />
+            )}
+
+            {workspace && (
+              <>
+                {tab === "KPI library" && <Kpis workspace={workspace} change={change} />}
+                {tab === "Data & approvals" && (
+                  <div style={{ padding: 28 }}>
+                    <CsvImport workspace={workspace} reload={reload} />
+                    <DataEntry workspace={workspace} change={change} tenant={tenant} />
                   </div>
-                </Empty>
-              )}
-              {workspace && !closed && (
-                <fieldset disabled={busy} className="saas-content" key={tenant}>
-                  {tab === "Dashboard" && (
-                    <Dashboard
-                      workspace={workspace}
-                      change={change}
-                      ask={(q) => {
-                        setAskSeed(q);
-                        setAssistantOpen(true);
-                      }}
-                      goto={setTab}
-                    />
-                  )}
-                  {tab === "Ask" && (
-                    <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} />
-                  )}
-                  {tab === "KPI library" && (
-                    <Kpis workspace={workspace} change={change} />
-                  )}
-                  {tab === "Data & approvals" && (
-                    <>
-                      <CsvImport workspace={workspace} reload={reload} />
-                      <DataEntry
-                        workspace={workspace}
-                        change={change}
-                        tenant={tenant}
-                      />
-                    </>
-                  )}
-                  {tab === "Organization" && (
+                )}
+                {tab === "Organization" && (
+                  <div style={{ padding: 28 }}>
                     <OrgHub
                       workspace={workspace}
                       change={change}
@@ -520,72 +500,31 @@ export function SaasRoute() {
                       reload={reload}
                       governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
                     />
-                  )}
-                  {tab === "Actions" && (
+                  </div>
+                )}
+                {tab === "Actions" && (
+                  <div style={{ padding: 28 }}>
                     <Actions workspace={workspace} change={change} />
-                  )}
-                  {tab === "Activity" && <Activity tenant={tenant} />}
-                </fieldset>
-              )}
-            </>
-          )}
-
-          <footer className="saas-footer">
-            {isOperator
-              ? "Platform revenue and operational metrics are derived from active client subscriptions. Illustrative telemetry."
-              : "Values appear only after approved inputs are calculated. Missing data is never treated as zero."}
-          </footer>
-        </main>
-      </div>
-
-      {isOperator ? (
-        <>
-          <button
-            type="button"
-            className="assistant-launcher"
-            aria-expanded={assistantOpen}
-            aria-controls="workspace-assistant"
-            onClick={() => setAssistantOpen((open) => !open)}
-          >
-            {assistantOpen ? "Close assistant" : "✦ Ask Platform AI"}
-          </button>
-          {assistantOpen && (
-            <aside id="workspace-assistant" className="assistant-drawer" aria-label="Platform metadata assistant">
-              <AskPanel
-                endpoint="/api/control/ask"
-                compact
-                title="Platform AI Assistant"
-                note="This platform assistant sees onboarding, subscription plans, platform revenues, and headcounts only. It cannot access customer internal clinical data."
-                starters={[
-                  "Give me a platform revenue summary",
-                  "Which owners still need to reset their password?",
-                  "Summarize subscription plans",
-                  "What data can the operator see?",
-                ]}
-              />
-            </aside>
-          )}
-        </>
-      ) : (
-        workspace && (
-          <>
-            <button
-              type="button"
-              className="assistant-launcher"
-              aria-expanded={assistantOpen}
-              aria-controls="workspace-assistant"
-              onClick={() => setAssistantOpen((open) => !open)}
-            >
-              {assistantOpen ? "Close assistant" : "✦ Ask AI"}
-            </button>
-            {assistantOpen && (
-              <aside id="workspace-assistant" className="assistant-drawer" aria-label="Role-scoped data assistant">
-                <AskPanel tenant={tenant} seed={askSeed} onSeedUsed={() => setAskSeed("")} compact />
-              </aside>
+                  </div>
+                )}
+                {tab === "Activity" && (
+                  <div style={{ padding: 28 }}>
+                    <Activity tenant={tenant} />
+                  </div>
+                )}
+              </>
             )}
           </>
-        )
-      )}
+        )}
+      </div>
+
+      {/* ─── Floating AI Chatbot Strictly on Right Down Corner ─── */}
+      <ExecutiveChatbot
+        isOpen={assistantOpen}
+        onToggle={() => setAssistantOpen((open) => !open)}
+        seedPrompt={askSeed}
+        onClearSeed={() => setAskSeed("")}
+      />
 
       <UserProfileModal
         isOpen={profileModalOpen}
@@ -593,23 +532,20 @@ export function SaasRoute() {
         email={email}
         workspace={workspace}
         isOperator={isOperator}
-        onProfileUpdated={(name) => setProfileName(name)}
+        onProfileUpdated={(name: string) => setProfileName(name)}
       />
     </div>
   );
 }
 
 function operatorDescription(tab: Tab) {
-  return {
+  const map: Partial<Record<Tab, string>> = {
     Dashboard: "Platform revenue telemetry, Monthly Recurring Revenue (MRR), ARR, and SaaS platform KPIs.",
     "SaaS Orgs": "Manage all client organizations subscribed to your SaaS platform: stop/suspend access, activate new clients, and monitor onboarding.",
     Ask: "Ask platform questions. Answers derive only from platform telemetry, subscriptions, and onboarding metadata.",
     Activity: "Platform audit log of organization status changes, lifecycle events, and tenant onboarding.",
-    "Data & approvals": "",
-    "KPI library": "",
-    Actions: "",
-    Organization: "",
-  }[tab];
+  };
+  return map[tab] ?? "";
 }
 
 function OperatorActivity() {
@@ -702,18 +638,24 @@ function OperatorActivity() {
 }
 
 function description(tab: Tab) {
-  return {
+  const map: Partial<Record<Tab, string>> = {
+    "Morning Brief": "Enterprise scorecard, capital allocation, and group-wide risk landscape.",
+    "KPI Dashboard": "Multi-dimensional operational and financial metrics run-rate across all hospitals.",
+    "Priority Inbox": "Executive decision and attention queue.",
+    "Facilities & COEs": "Clinical facilities, specialized centers of excellence, and bed capacities.",
+    "Board Meetings": "Board review packs, committee agendas, and executive signoffs.",
+    "Project Risk": "Group risk landscape and infrastructure mitigations.",
+    "KPI Explorer": "Verified mathematical formulas and calculation audits.",
     Dashboard: "Your morning brief: what changed, what is off target, and what to act on.",
     Ask: "Ask in plain words. Answers use only what your role can see.",
-    "Data & approvals":
-      "Submit aggregate measures and review them before publication.",
-    "KPI library":
-      "Define what matters. Keep every calculation explicit and versioned.",
+    "Data & approvals": "Submit aggregate measures and review them before publication.",
+    "KPI library": "Define what matters. Keep every calculation explicit and versioned.",
     Actions: "Turn an observation into an accountable next step.",
     Organization: "Run your organization: its details, roles and the KPIs each one sees, people and units.",
     Activity: "An auditable record of changes in your workspace.",
     "SaaS Orgs": "Manage all client organizations subscribed to your SaaS platform. Stop/suspend access, activate new clients, and monitor onboarding.",
-  }[tab];
+  };
+  return map[tab] ?? "";
 }
 type Props = {
   workspace: SaasWorkspace;
