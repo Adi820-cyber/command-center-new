@@ -42,7 +42,6 @@ import {
   Building2,
   FileSpreadsheet,
   CheckSquare,
-  RotateCcw,
   Shield,
 } from "lucide-react";
 import { ExecutiveMorningBrief } from "./executive-morning-brief";
@@ -120,7 +119,7 @@ export function SaasRoute() {
   const [profileName, setProfileName] = useState("");
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isOperator, setIsOperator] = useState(false);
-  const [resetSignal, setResetSignal] = useState(0);
+  const resetSignal = 0;
   const reload = useCallback(async () => {
     if (!tenant) return;
     const current = generation.current;
@@ -472,25 +471,29 @@ export function SaasRoute() {
               <Settings size={15} color="#94a3b8" />
             </button>
 
-            <button
-              type="button"
-              className="exec-reset-btn"
-              onClick={() => {
-                setResetSignal((s) => s + 1);
-                setMessage("✓ Prototype demo state reset to baseline.");
-                setTimeout(() => setMessage(""), 3000);
-              }}
-            >
-              <RotateCcw size={14} />
-              <span>Reset Prototype Demo</span>
-            </button>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
-              <span className="exec-version-tag">AfricareOS v3.2</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 4px 0", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+                <Building2 size={13} color="#60a5fa" style={{ flexShrink: 0 }} />
+                <span
+                  className="exec-version-tag"
+                  style={{
+                    textTransform: "none",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    maxWidth: 130,
+                  }}
+                  title={workspace?.organization.name || "Being Social"}
+                >
+                  {workspace?.organization.name || organizations.find((o) => o.id === tenant)?.name || "Being Social"}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => void signOut().then(() => window.location.assign("/login"))}
-                style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
               >
                 Sign out
               </button>
@@ -501,8 +504,65 @@ export function SaasRoute() {
 
       <div className="exec-main">
         {message && (
-          <div style={{ margin: "16px 28px 0", padding: "10px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", borderRadius: 8, fontWeight: 600, fontSize: 13 }}>
-            {message}
+          <div
+            style={{
+              margin: "16px 28px 0",
+              padding: "10px 16px",
+              background:
+                message.toLowerCase().includes("401") ||
+                message.toLowerCase().includes("unauthorized") ||
+                message.toLowerCase().includes("expired")
+                  ? "#fef2f2"
+                  : message.toLowerCase().includes("fail") || message.toLowerCase().includes("error")
+                  ? "#fffbeb"
+                  : "#f0fdf4",
+              border: `1px solid ${
+                message.toLowerCase().includes("401") ||
+                message.toLowerCase().includes("unauthorized") ||
+                message.toLowerCase().includes("expired")
+                  ? "#fecaca"
+                  : message.toLowerCase().includes("fail") || message.toLowerCase().includes("error")
+                  ? "#fde68a"
+                  : "#bbf7d0"
+              }`,
+              color:
+                message.toLowerCase().includes("401") ||
+                message.toLowerCase().includes("unauthorized") ||
+                message.toLowerCase().includes("expired")
+                  ? "#991b1b"
+                  : message.toLowerCase().includes("fail") || message.toLowerCase().includes("error")
+                  ? "#92400e"
+                  : "#166534",
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: 13,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <span>{message}</span>
+            {(message.toLowerCase().includes("401") ||
+              message.toLowerCase().includes("unauthorized") ||
+              message.toLowerCase().includes("expired")) && (
+              <button
+                type="button"
+                onClick={() => void signOut().then(() => window.location.assign("/login"))}
+                style={{
+                  background: "#dc2626",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "4px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Sign in again
+              </button>
+            )}
           </div>
         )}
 

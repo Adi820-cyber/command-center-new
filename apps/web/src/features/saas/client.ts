@@ -1,14 +1,17 @@
 import { ErrorEnvelopeSchema, MutationResponseSchema } from "@orbit/contracts";
-import { getCurrentSession } from "../../lib/auth";
+import { getCurrentSession, saveStoredSession } from "../../lib/auth";
+
 function resolveApiBase(path: string): string {
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  if (path.startsWith("/api/control/")) {
-    return (import.meta.env.VITE_CONTROL_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3001" : "https://cmd-control-api.vercel.app")).replace(/\/+$/, "");
+  const mainBase = (import.meta.env.VITE_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3000" : "https://cmd-api.vercel.app")).replace(/\/+$/, "");
+
+  if (path.startsWith("/api/control/") && import.meta.env.VITE_CONTROL_API_BASE_URL?.trim()) {
+    return import.meta.env.VITE_CONTROL_API_BASE_URL.trim().replace(/\/+$/, "");
   }
-  if (path.startsWith("/api/identity/")) {
-    return (import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3002" : "https://cmd-identity-api.vercel.app")).replace(/\/+$/, "");
+  if (path.startsWith("/api/identity/") && import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim()) {
+    return import.meta.env.VITE_IDENTITY_API_BASE_URL.trim().replace(/\/+$/, "");
   }
-  return (import.meta.env.VITE_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3000" : "https://cmd-api.vercel.app")).replace(/\/+$/, "");
+  return mainBase;
 }
 
 export async function request<T>(
@@ -54,6 +57,10 @@ export async function request<T>(
 
   if (!response.ok) {
     if (response.status === 401) {
+      saveStoredSession(null);
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login?reason=session_expired");
+      }
       throw new Error("Session expired or unauthorized (401). Please sign in again.");
     }
 

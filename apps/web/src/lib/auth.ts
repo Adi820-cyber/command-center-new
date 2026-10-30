@@ -61,7 +61,29 @@ export function getStoredSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const session = JSON.parse(raw) as AuthSession;
+    if (session?.access_token) {
+      const parts = session.access_token.split(".");
+      if (parts.length === 3) {
+        const payloadPart = parts[1];
+        if (payloadPart) {
+          try {
+            const payload = JSON.parse(atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/")));
+            if (payload?.exp && typeof payload.exp === "number") {
+              if (Date.now() / 1000 >= payload.exp - 30) {
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                return null;
+              }
+            }
+          } catch {
+            localStorage.removeItem(SESSION_STORAGE_KEY);
+            return null;
+          }
+        }
+      }
+    }
+    return session;
   } catch {
     return null;
   }
