@@ -98,47 +98,51 @@ export function normalizeSqlForMySql(
   // A. kpi.my_organizations()
   normalized = normalized.replaceAll(
     "from kpi.my_organizations()",
-    "from (select o.id, o.name, m.owner, o.status from kpi_memberships m join kpi_organizations o on o.id=m.tenant_id where m.subject=@kpi_subject and m.active = 1) as my_orgs",
+    "from (select o.id, o.name, m.owner, o.status from kpi_memberships m join kpi_organizations o on o.id=m.tenant_id where m.subject=@kpi_subject COLLATE utf8mb4_unicode_ci and m.active = 1) as my_orgs",
   );
   normalized = normalized.replaceAll(
     "kpi.my_organizations()",
-    "(select o.id, o.name, m.owner, o.status from kpi_memberships m join kpi_organizations o on o.id=m.tenant_id where m.subject=@kpi_subject and m.active = 1)",
+    "(select o.id, o.name, m.owner, o.status from kpi_memberships m join kpi_organizations o on o.id=m.tenant_id where m.subject=@kpi_subject COLLATE utf8mb4_unicode_ci and m.active = 1)",
   );
 
   // B. kpi.is_owner(...)
   normalized = normalized.replaceAll(
     "kpi.is_owner(id)",
-    "COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = kpi_organizations.id AND m2.subject = @kpi_subject AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0)",
+    "COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = kpi_organizations.id AND m2.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0)",
   );
   normalized = normalized.replaceAll(
     "kpi.is_owner(m.tenant_id)",
-    "COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = m.tenant_id AND m2.subject = @kpi_subject AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0)",
+    "COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = m.tenant_id AND m2.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0)",
+  );
+  normalized = normalized.replaceAll(
+    "kpi.is_owner(o.id)",
+    "COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = o.id AND m2.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0)",
   );
   normalized = normalized.replaceAll(
     /select\s+kpi\.is_owner\(([^)]+)\)\s+as\s+([a-zA-Z0-9_]+)/gi,
-    "SELECT COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = $1 AND m2.subject = @kpi_subject AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0) AS $2",
+    "SELECT COALESCE((SELECT 1 FROM kpi_memberships m2 WHERE m2.tenant_id = $1 AND m2.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m2.active = 1 AND m2.owner = 1 LIMIT 1), 0) AS $2",
   );
 
   // C. kpi.is_member(...)
   normalized = normalized.replaceAll(
     /select\s+kpi\.is_member\(([^)]+)\)\s+as\s+([a-zA-Z0-9_]+)/gi,
-    "SELECT COALESCE((SELECT 1 FROM kpi_memberships WHERE tenant_id = $1 AND subject = @kpi_subject AND active = 1 LIMIT 1), 0) AS $2",
+    "SELECT COALESCE((SELECT 1 FROM kpi_memberships WHERE tenant_id = $1 AND subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND active = 1 LIMIT 1), 0) AS $2",
   );
 
   // D. kpi.allowed(...)
   normalized = normalized.replaceAll(
     /select\s+kpi\.allowed\(\$1,\s*\$2(,\s*\$3)?(,\s*\$4)?\)\s+as\s+allowed/gi,
-    "SELECT COALESCE((SELECT 1 FROM kpi_memberships m WHERE m.tenant_id = $1 AND m.subject = @kpi_subject AND m.active = 1 AND (m.owner = 1 OR EXISTS (SELECT 1 FROM kpi_member_roles mr JOIN kpi_grants g ON g.tenant_id = mr.tenant_id AND g.role_id = mr.role_id WHERE mr.tenant_id = m.tenant_id AND mr.member_id = m.id AND g.capability = $2)) LIMIT 1), 0) AS allowed",
+    "SELECT COALESCE((SELECT 1 FROM kpi_memberships m WHERE m.tenant_id = $1 AND m.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m.active = 1 AND (m.owner = 1 OR EXISTS (SELECT 1 FROM kpi_member_roles mr JOIN kpi_grants g ON g.tenant_id = mr.tenant_id AND g.role_id = mr.role_id WHERE mr.tenant_id = m.tenant_id AND mr.member_id = m.id AND g.capability = $2)) LIMIT 1), 0) AS allowed",
   );
 
   // E. kpi.my_roles(...)
   normalized = normalized.replaceAll(
     /select\s+id,\s*name\s+from\s+kpi\.my_roles\(([^)]+)\)/gi,
-    "SELECT r.id, r.name FROM kpi_member_roles mr JOIN kpi_roles r ON r.id = mr.role_id JOIN kpi_memberships m ON m.id = mr.member_id WHERE m.tenant_id = $1 AND m.subject = @kpi_subject AND m.active = 1",
+    "SELECT r.id, r.name FROM kpi_member_roles mr JOIN kpi_roles r ON r.id = mr.role_id JOIN kpi_memberships m ON m.id = mr.member_id WHERE m.tenant_id = $1 AND m.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m.active = 1",
   );
   normalized = normalized.replaceAll(
     /select\s+name\s+from\s+kpi\.my_roles\(([^)]+)\)/gi,
-    "SELECT r.name FROM kpi_member_roles mr JOIN kpi_roles r ON r.id = mr.role_id JOIN kpi_memberships m ON m.id = mr.member_id WHERE m.tenant_id = $1 AND m.subject = @kpi_subject AND m.active = 1",
+    "SELECT r.name FROM kpi_member_roles mr JOIN kpi_roles r ON r.id = mr.role_id JOIN kpi_memberships m ON m.id = mr.member_id WHERE m.tenant_id = $1 AND m.subject = @kpi_subject COLLATE utf8mb4_unicode_ci AND m.active = 1",
   );
 
   // F. kpi_control.list_organizations()

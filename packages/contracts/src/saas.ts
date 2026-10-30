@@ -127,6 +127,10 @@ export const TenantSummarySchema = z.strictObject({
   owner: z.boolean(),
   /** Only an active organization can be worked in. */
   status: OrganizationStatusSchema.default("active"),
+  industry: z.string().optional(),
+  plan: z.string().optional(),
+  subscriptionStatus: z.string().optional(),
+  templateId: z.string().nullable().optional(),
 });
 export const TenantListSchema = z.array(TenantSummarySchema);
 export const MeasureSchema = NewMeasureSchema.extend({

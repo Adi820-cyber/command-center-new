@@ -12,10 +12,24 @@ export async function loadWorkspace(
   tenant: string,
   subject: string,
 ): Promise<SaasWorkspace> {
-  const [organization] = await tx.query(
-    "select id,name,kpi.is_owner(id) as owner,status from kpi.organizations where id=$1",
-    [tenant],
-  );
+  let organization: any;
+  try {
+    const [row] = await tx.query(
+      `select o.id, o.name, kpi.is_owner(o.id) as owner, o.status,
+              r.industry, r.plan, r.subscription_status as "subscriptionStatus", r.template_id as "templateId"
+       from kpi.organizations o
+       left join kpi_control.registry r on r.id = o.id
+       where o.id = $1`,
+      [tenant],
+    );
+    organization = row;
+  } catch {
+    const [row] = await tx.query(
+      "select id,name,kpi.is_owner(id) as owner,status from kpi.organizations where id=$1",
+      [tenant],
+    );
+    organization = row;
+  }
   const units = await tx.query(
     'select id,name,kind,parent_id as "parentId" from kpi.units where tenant_id=$1 order by name',
     [tenant],
