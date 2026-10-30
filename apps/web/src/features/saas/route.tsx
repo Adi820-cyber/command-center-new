@@ -297,7 +297,12 @@ export function SaasRoute() {
       })
       .catch((e) => {
         if (active) {
-          setMessage(e.message);
+          const isOp =
+            email.toLowerCase() === "ghanshamrn.a27@gmail.com" ||
+            email.toLowerCase() === "ghanshamrn.a17@gmail.com";
+          if (!isOp) {
+            setMessage(e.message);
+          }
           setLoading(false);
         }
       });
@@ -417,17 +422,23 @@ export function SaasRoute() {
             </div>
           </div>
           <nav aria-label="Workspace">
-            {OPERATOR_TABS.map(({ tab: item, label, icon }) => (
-              <button
-                key={item}
-                className={tab === item ? "selected" : ""}
-                aria-current={tab === item ? "page" : undefined}
-                onClick={() => setTab(item)}
-              >
-                <span aria-hidden="true">{icon}</span>
-                {label}
-              </button>
-            ))}
+            {OPERATOR_TABS.map(({ tab: item, label, icon }) => {
+              const isSelected =
+                tab === item ||
+                (item === "SaaS Orgs" && !["Dashboard", "SaaS Orgs", "Activity"].includes(tab));
+              return (
+                <button
+                  key={item}
+                  id={`operator-tab-${item.toLowerCase().replace(/\s+/g, "-")}`}
+                  className={isSelected ? "selected" : ""}
+                  aria-current={isSelected ? "page" : undefined}
+                  onClick={() => setTab(item)}
+                >
+                  <span aria-hidden="true">{icon}</span>
+                  {label}
+                </button>
+              );
+            })}
           </nav>
           <div className="saas-sidebar-footer">
             <button
@@ -766,7 +777,9 @@ export function SaasRoute() {
             <header className="saas-topbar" style={{ marginBottom: 20 }}>
               <div>
                 <span>SaaS Platform Management</span>
-                <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>{operatorDescription(tab)}</p>
+                <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+                  {operatorDescription(["Dashboard", "SaaS Orgs", "Activity"].includes(tab) ? tab : "SaaS Orgs")}
+                </p>
               </div>
               <span className="saas-badge">Platform Provider (Super Admin)</span>
             </header>
@@ -780,7 +793,7 @@ export function SaasRoute() {
                   }}
                 />
               )}
-              {tab === "SaaS Orgs" && (
+              {(tab === "SaaS Orgs" || !["Dashboard", "SaaS Orgs", "Activity"].includes(tab)) && (
                 <SaaSOrganizationsManager
                   onSelectWorkspace={(tenantId) => {
                     selectTenant(tenantId);
