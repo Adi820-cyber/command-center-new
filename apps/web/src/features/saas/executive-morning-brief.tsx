@@ -8,7 +8,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { type SaasWorkspace } from "@orbit/contracts";
+import { roleDraftFromGrants, type SaasWorkspace } from "@orbit/contracts";
 import "./executive.css";
 
 interface Props {
@@ -16,6 +16,7 @@ interface Props {
   onNavigateTab: (tab: string) => void;
   resetSignal?: number;
   workspace?: SaasWorkspace;
+  activeRole?: SaasWorkspace["roles"][number];
 }
 
 export interface DrillTarget {
@@ -28,7 +29,13 @@ export interface DrillTarget {
   breakdown?: { label: string; value: string; margin?: string; status?: string }[];
 }
 
-export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSignal, workspace }: Props) {
+export function ExecutiveMorningBrief({
+  onOpenChatbot,
+  onNavigateTab,
+  resetSignal,
+  workspace,
+  activeRole,
+}: Props) {
   const orgName = workspace?.organization.name || "Organization";
   const industry = workspace?.organization.industry || "";
   const templateId = workspace?.organization.templateId || "";
@@ -175,8 +182,26 @@ export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSigna
     setApprovedOrders((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Compute live scorecard cards from workspace
-  const kpis = workspace?.kpis ?? [];
+  const roleDraft = useMemo(() => {
+    if (!activeRole) return undefined;
+    return roleDraftFromGrants(activeRole.grants);
+  }, [activeRole]);
+
+  const canSubmit = !activeRole || activeRole.grants.some((g) => g.capability === "submit");
+  const canApprove = !activeRole || activeRole.grants.some((g) => g.capability === "approve");
+  const canAct = !activeRole || activeRole.grants.some((g) => g.capability === "act" || g.capability === "view");
+
+  // Filter live scorecard cards according to role entitlements
+  const kpis = useMemo(() => {
+    const all = workspace?.kpis ?? [];
+    if (!roleDraft || roleDraft.allKpis || roleDraft.kpiIds.length === 0) {
+      return all;
+    }
+    const assignedSet = new Set(roleDraft.kpiIds);
+    const assigned = all.filter((k) => assignedSet.has(k.id));
+    return assigned.length > 0 ? assigned : all;
+  }, [workspace?.kpis, roleDraft]);
+
   const results = workspace?.results ?? [];
 
   // Map top 5 KPI cards
@@ -322,13 +347,16 @@ export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSigna
                 : "ENTERPRISE OPERATIONS"}
             </span>
             <span className="exec-pill-green">
-              <span>●</span> {workspace?.organization.owner ? "Organization Admin (Manager)" : "Executive Command"}
+              <span>●</span> {activeRole ? activeRole.name : (workspace?.organization.owner ? "Organization Admin (Manager)" : "Executive Command")}
             </span>
           </div>
-          <h1 className="exec-header-title">{orgName} — Executive Brief</h1>
+          <h1 className="exec-header-title">
+            {orgName} — {activeRole ? `${activeRole.name} Brief` : "Executive Brief"}
+          </h1>
           <p className="exec-header-subtitle">
-            Enterprise scorecard, {workspace?.kpis.length ?? 8} active KPIs across{" "}
-            {workspace?.units.length ?? 5} service units for {orgName}.
+            {activeRole
+              ? `Role-scoped scorecard: ${kpis.length} assigned KPIs across ${workspace?.units.length ?? 5} units for ${orgName}.`
+              : `Enterprise scorecard, ${workspace?.kpis.length ?? 8} active KPIs across ${workspace?.units.length ?? 5} service units for ${orgName}.`}
           </p>
         </div>
 
@@ -336,20 +364,46 @@ export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSigna
           <button
             type="button"
             className="exec-btn-dark"
-            onClick={() => onOpenChatbot(`What exceptions require my executive attention this morning for ${orgName}?`)}
+            onClick={() => onOpenChatbot(`What exceptions require my attention this morning for ${orgName}?`)}
           >
             <Sparkles size={16} />
             <span>Ask anything</span>
           </button>
 
-          <button
-            type="button"
-            className="exec-btn-primary"
-            onClick={() => setDecisionQueueOpen(true)}
-          >
-            <span>Decision Queue ({pendingCount})</span>
-            <span>→</span>
-          </button>
+          {canSubmit && activeRole && (
+            <button
+              type="button"
+              className="exec-btn-primary"
+              style={{ background: "linear-gradient(135deg, #059669 0%, #047857 100%)" }}
+              onClick={() => onNavigateTab("Data & approvals")}
+            >
+              <span>+ Upload Data</span>
+              <span>→</span>
+            </button>
+          )}
+
+          {canApprove && activeRole && (
+            <button
+              type="button"
+              className="exec-btn-primary"
+              style={{ background: "linear-gradient(135deg, #d97706 0%, #b45309 100%)" }}
+              onClick={() => onNavigateTab("Data & approvals")}
+            >
+              <span>Approvals Queue</span>
+              <span>→</span>
+            </button>
+          )}
+
+          {(canAct || !activeRole) && (
+            <button
+              type="button"
+              className="exec-btn-primary"
+              onClick={() => setDecisionQueueOpen(true)}
+            >
+              <span>Decision Queue ({pendingCount})</span>
+              <span>→</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -359,7 +413,7 @@ export function ExecutiveMorningBrief({ onOpenChatbot, onNavigateTab, resetSigna
           <div className="exec-telemetry-title">
             <span className="exec-telemetry-bullet">●</span>
             <span>
-              MORNING BRIEF EXCEPTION TELEMETRY · {orgName.toUpperCase()} OPERATIONAL COMMAND
+              MORNING BRIEF EXCEPTION TELEMETRY · {activeRole ? activeRole.name.toUpperCase() : orgName.toUpperCase()} FOCUS
             </span>
           </div>
           <div className="exec-telemetry-meta">Generated 08:30 AM · Executive Office</div>
