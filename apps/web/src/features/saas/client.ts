@@ -5,11 +5,13 @@ function resolveApiBase(path: string): string {
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const mainBase = (import.meta.env.VITE_API_BASE_URL?.trim() || (isLocal ? "http://localhost:3000" : "https://cmd-api.vercel.app")).replace(/\/+$/, "");
 
-  if (path.startsWith("/api/control/") && import.meta.env.VITE_CONTROL_API_BASE_URL?.trim()) {
-    return import.meta.env.VITE_CONTROL_API_BASE_URL.trim().replace(/\/+$/, "");
-  }
-  if (path.startsWith("/api/identity/") && import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim()) {
-    return import.meta.env.VITE_IDENTITY_API_BASE_URL.trim().replace(/\/+$/, "");
+  if (!isLocal) {
+    if (path.startsWith("/api/control/") && import.meta.env.VITE_CONTROL_API_BASE_URL?.trim()) {
+      return import.meta.env.VITE_CONTROL_API_BASE_URL.trim().replace(/\/+$/, "");
+    }
+    if (path.startsWith("/api/identity/") && import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim()) {
+      return import.meta.env.VITE_IDENTITY_API_BASE_URL.trim().replace(/\/+$/, "");
+    }
   }
   return mainBase;
 }

@@ -10,6 +10,7 @@ import {
 import { request } from "../saas/client";
 import { AccessPanel, type IssuedSet } from "../saas/access-panel";
 import { getCurrentSession } from "../../lib/auth";
+import { z } from "zod";
 
 export type ControlOrganization = ReturnType<typeof ControlOrganizationListSchema.parse>[number];
 
@@ -828,6 +829,43 @@ export function SaaSOrganizationsManager({
       setConfirming(undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Failed to permanently erase organization.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function provideOwnerCredentials(org: ControlOrganization) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const res = await request(
+        `/api/control/organizations/${org.id}/owner-credentials`,
+        z.object({
+          email: z.string(),
+          ownerName: z.string(),
+          temporaryPassword: z.string(),
+          roleKeys: z.array(z.string()),
+          organizationName: z.string(),
+        }),
+        {},
+      );
+      setIssued({
+        title: `Org Admin Credentials · ${res.organizationName}`,
+        mode: "logins",
+        people: [
+          {
+            email: res.email,
+            temporaryPassword: res.temporaryPassword,
+            roleKeys: res.roleKeys,
+          },
+        ],
+      });
+      setMessage(
+        `Generated fresh credentials for Org Admin (${res.email}). You can now provide these credentials to the organization manager.`,
+      );
+      await refresh();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Unable to generate credentials for Org Admin.");
     } finally {
       setBusy(false);
     }
@@ -1652,6 +1690,29 @@ export function SaaSOrganizationsManager({
                               title="Open this tenant's KPI workspace directly"
                             >
                               Open Workspace →
+                            </button>
+                          )}
+
+                          {/* Provide Credentials to Org Admin */}
+                          {org.status !== "deleted" && (
+                            <button
+                              type="button"
+                              className="secondary"
+                              style={{
+                                fontSize: 12,
+                                padding: "4px 8px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                color: "#1d4ed8",
+                                borderColor: "#bfdbfe",
+                                fontWeight: 600,
+                              }}
+                              disabled={busy}
+                              onClick={() => void provideOwnerCredentials(org)}
+                              title="Generate or reset login credentials for this organization's Admin"
+                            >
+                              🔑 Provide Credentials
                             </button>
                           )}
 

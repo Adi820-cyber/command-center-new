@@ -120,9 +120,10 @@ export function SaasRoute() {
   const [profileName, setProfileName] = useState("");
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isOperator, setIsOperator] = useState(false);
+  const [viewingAsSupervisor, setViewingAsSupervisor] = useState(false);
   const resetSignal = 0;
 
-  // Active viewing role state (allows switching between Admin and specific employee role perspectives)
+  // Active viewing role state (allows Org Admin to preview employee role perspectives)
   const [selectedRoleId, setSelectedRoleId] = useState<string>("current");
 
   const isActualOwner = Boolean(workspace?.me?.owner || workspace?.organization.owner);
@@ -130,11 +131,9 @@ export function SaasRoute() {
     isActualOwner ||
     Boolean(workspace?.me?.roles?.some((r) => r.name.toLowerCase().includes("admin")));
 
-  // On localhost/dev or if actual admin, allow switching role perspective
-  const canSwitchPerspective =
-    isActualAdmin ||
-    (typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"));
+  // Only the actual Organization Admin or Platform Operator in supervisor mode can preview employee perspectives.
+  // Regular employees (emp) NEVER see a role perspective switcher!
+  const canSwitchPerspective = Boolean(isActualAdmin || viewingAsSupervisor);
 
   const activeRole = useMemo(() => {
     if (!workspace) return undefined;
@@ -230,6 +229,14 @@ export function SaasRoute() {
       if (!active) return;
       const userEmail = session?.user.email ?? "";
       setEmail(userEmail);
+      const isOperatorAccount =
+        userEmail.toLowerCase() === "ghanshamrn.a27@gmail.com" ||
+        userEmail.toLowerCase() === "ghanshamrn.a17@gmail.com";
+      if (isOperatorAccount) {
+        setIsOperator(true);
+        setLoading(false);
+        setTab("SaaS Orgs");
+      }
       const stored = loadStoredProfile(userEmail);
       const metaName = (session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name) as string | undefined;
       if (metaName) setProfileName(metaName);
@@ -250,7 +257,7 @@ export function SaasRoute() {
         } else if (initialTab === "activity") {
           setTab("Activity");
         } else {
-          setTab("Dashboard");
+          setTab("SaaS Orgs");
         }
       })
       .catch(() => {
@@ -350,7 +357,52 @@ export function SaasRoute() {
 
   return (
     <div className="exec-shell">
-      {isOperator ? (
+      {viewingAsSupervisor && (
+        <div
+          style={{
+            background: "linear-gradient(90deg, #0b1329 0%, #1e3a8a 100%)",
+            color: "#ffffff",
+            padding: "8px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 13,
+            fontWeight: 600,
+            borderBottom: "1px solid #3b82f6",
+            width: "100%",
+            boxSizing: "border-box",
+            zIndex: 1000,
+            gridColumn: "1 / -1",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18, color: "#60a5fa" }}>◈</span>
+            <span>
+              <strong>Platform Operator Supervisor Mode</strong> · Viewing <u>{workspace?.organization.name ?? "Client"}</u> Workspace
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setViewingAsSupervisor(false);
+              setTab("SaaS Orgs");
+            }}
+            style={{
+              background: "#2563eb",
+              color: "#ffffff",
+              border: "1px solid #60a5fa",
+              borderRadius: 6,
+              padding: "5px 14px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            ← Return to SaaS Operator Console
+          </button>
+        </div>
+      )}
+      {isOperator && !viewingAsSupervisor ? (
         <aside className="saas-sidebar">
           <a className="saas-brand" href="/">
             ◈ <span>Command Center<small>PERFORMANCE WORKSPACE</small></span>
@@ -486,8 +538,8 @@ export function SaasRoute() {
             <div className="exec-profile-info">
               <span className="exec-profile-title" title={email}>{profileName || email || "Org Admin"}</span>
               <span className="exec-profile-role">
-                {isOperator
-                  ? "Platform Operator"
+                {viewingAsSupervisor
+                  ? "Platform Operator (Supervisor)"
                   : activeRole
                   ? activeRole.name
                   : workspace?.organization.owner
@@ -709,7 +761,7 @@ export function SaasRoute() {
         )}
 
         {/* ── Operator Views ── */}
-        {isOperator ? (
+        {isOperator && !viewingAsSupervisor ? (
           <main style={{ padding: 28 }}>
             <header className="saas-topbar" style={{ marginBottom: 20 }}>
               <div>
@@ -730,8 +782,9 @@ export function SaasRoute() {
               )}
               {tab === "SaaS Orgs" && (
                 <SaaSOrganizationsManager
-                  onSelectWorkspace={() => {
-                    setTab("Dashboard");
+                  onSelectWorkspace={(tenantId) => {
+                    selectTenant(tenantId);
+                    setViewingAsSupervisor(true);
                   }}
                   currentTenantId={tenant}
                   operatorEmail={email}

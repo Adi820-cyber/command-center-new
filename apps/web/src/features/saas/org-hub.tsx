@@ -390,7 +390,7 @@ function Roles({
   const [editingMemberId, setEditingMemberId] = useState<string>();
   const [editingMemberRoles, setEditingMemberRoles] = useState<string[]>([]);
 
-  const canCreateLogins = Boolean(import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
+  const canCreateLogins = true;
   const roleName = new Map(w.roles.map((r) => [r.id, r.name]));
   const holders = (roleId: string) => w.members.filter((m) => m.active && m.roleIds.includes(roleId)).length;
   const unitName = (id: string | null) => (id ? w.units.find((u) => u.id === id)?.name ?? "a unit" : "The whole organization");
@@ -1401,8 +1401,7 @@ function People({ w, change, tenant, reload }: { w: SaasWorkspace; change: Chang
   const [issued, setIssued] = useState<IssuedSet>();
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginMessage, setLoginMessage] = useState("");
-  // Creating logins needs the identity API. Without it, people are added by invitation link.
-  const canCreateLogins = Boolean(import.meta.env.VITE_IDENTITY_API_BASE_URL?.trim());
+  const canCreateLogins = true;
   const parsed = useMemo(() => parseEmails(emailsText), [emailsText]);
   async function resetPassword(member: SaasWorkspace["members"][number]) {
     const who = member.email ?? member.displayName;
