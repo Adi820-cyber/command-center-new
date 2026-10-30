@@ -644,46 +644,38 @@ export function SaasRoute() {
             )}
 
             {workspace && (
-              <>
+              <div className="saas-shell hub-shell" style={{ padding: "28px 36px" }}>
                 {(tab === "KPI Catalog" || tab === "KPI library") && (
-                  <div style={{ padding: 28 }}>
-                    <OrgKpis workspace={workspace} change={change} reload={reload} />
-                  </div>
+                  <OrgKpis workspace={workspace} change={change} reload={reload} />
                 )}
                 {tab === "Data & approvals" && (
-                  <div style={{ padding: 28 }}>
+                  <>
                     <CsvImport workspace={workspace} reload={reload} />
                     <DataEntry workspace={workspace} change={change} tenant={tenant} />
-                  </div>
+                  </>
                 )}
                 {(tab === "Roles & Access" || tab === "Organization") && (
-                  <div style={{ padding: 28 }}>
-                    <OrgHub
-                      workspace={workspace}
-                      change={change}
-                      goto={(targetTab) => {
-                        if (targetTab === "KPI library") setTab("KPI Catalog");
-                        else if (targetTab === "Data & approvals") setTab("Data & approvals");
-                        else setTab("Morning Brief");
-                      }}
-                      tenant={tenant}
-                      reload={reload}
-                      initialSection={tab === "Roles & Access" ? "Roles & Permissions" : "Overview"}
-                      governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
-                    />
-                  </div>
+                  <OrgHub
+                    workspace={workspace}
+                    change={change}
+                    goto={(targetTab) => {
+                      if (targetTab === "KPI library") setTab("KPI Catalog");
+                      else if (targetTab === "Data & approvals") setTab("Data & approvals");
+                      else setTab("Morning Brief");
+                    }}
+                    tenant={tenant}
+                    reload={reload}
+                    initialSection={tab === "Roles & Access" ? "Roles & Permissions" : "Overview"}
+                    governance={<Governance tenant={tenant} workspace={workspace} change={change} />}
+                  />
                 )}
                 {(tab === "Decisions & Actions" || tab === "Actions") && (
-                  <div style={{ padding: 28 }}>
-                    <Actions workspace={workspace} change={change} />
-                  </div>
+                  <Actions workspace={workspace} change={change} />
                 )}
                 {tab === "Activity" && (
-                  <div style={{ padding: 28 }}>
-                    <Activity tenant={tenant} />
-                  </div>
+                  <Activity tenant={tenant} />
                 )}
-              </>
+              </div>
             )}
           </>
         )}

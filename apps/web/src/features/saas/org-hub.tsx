@@ -14,6 +14,34 @@ import { request } from "./client";
 import { domainTitle } from "./domains";
 import { parseEmails } from "./emails";
 import { OrgKpis } from "./org-kpis";
+import { initialOf } from "./identity";
+import {
+  LayoutDashboard,
+  ShieldCheck,
+  BarChart3,
+  Users,
+  Building2,
+  Plus,
+  KeyRound,
+  Eye,
+  EyeOff,
+  UserPlus,
+  Edit2,
+  Trash2,
+  CheckSquare,
+  Upload,
+  ShieldAlert,
+  Settings2,
+  Lock,
+  Mail,
+  User,
+  Globe,
+  RefreshCw,
+  X,
+  UserCog,
+  UserMinus,
+  Shield,
+} from "lucide-react";
 
 type Change = (path: string, body: unknown) => Promise<boolean>;
 type Section = "Overview" | "Roles & Permissions" | "KPIs (Predefined & Custom)" | "People & Logins" | "Units & Structure";
@@ -62,21 +90,44 @@ export function OrgHub({
       setSection(initialSection);
     }
   }, [initialSection]);
+
+  const sectionConfig: Record<Section, { label: string; icon: typeof LayoutDashboard; count?: number }> = {
+    Overview: { label: "Overview", icon: LayoutDashboard },
+    "Roles & Permissions": { label: "Roles & Permissions", icon: ShieldCheck, count: w.roles.length },
+    "KPIs (Predefined & Custom)": { label: "KPIs (Catalog & Custom)", icon: BarChart3, count: w.kpis.length },
+    "People & Logins": { label: "Team & Logins", icon: Users, count: w.members.length },
+    "Units & Structure": { label: "Units & Structure", icon: Building2, count: w.units.length },
+  };
+
   return (
-    <>
+    <div className="hub-content-container">
       <nav className="hub-tabs" aria-label="Organization">
-        {SECTIONS.map((s) => (
-          <button key={s} type="button" className={s === section ? "selected" : ""} aria-current={s === section ? "page" : undefined} onClick={() => setSection(s)}>
-            {s}
-          </button>
-        ))}
+        {SECTIONS.map((s) => {
+          const cfg = sectionConfig[s];
+          const IconComp = cfg.icon;
+          return (
+            <button
+              key={s}
+              type="button"
+              className={s === section ? "selected" : ""}
+              aria-current={s === section ? "page" : undefined}
+              onClick={() => setSection(s)}
+            >
+              <IconComp size={15} />
+              <span>{cfg.label}</span>
+              {typeof cfg.count === "number" && (
+                <span className="tab-badge">{cfg.count}</span>
+              )}
+            </button>
+          );
+        })}
       </nav>
       {section === "Overview" && <Overview w={w} change={change} goto={goto} open={setSection} governance={governance} />}
       {section === "Roles & Permissions" && <Roles w={w} change={change} tenant={tenant} reload={reload} />}
       {section === "KPIs (Predefined & Custom)" && <OrgKpis workspace={w} change={change} reload={reload} />}
       {section === "People & Logins" && <People w={w} change={change} tenant={tenant} reload={reload} />}
       {section === "Units & Structure" && <Units w={w} change={change} />}
-    </>
+    </div>
   );
 }
 
@@ -428,19 +479,44 @@ function Roles({
   }
 
   return (
-    <>
-      <section className="saas-card">
-        <div className="saas-card-title">
+    <div className="roles-section-wrap">
+      <section className="roles-hero-card">
+        <div className="roles-hero-title">
+          <div className="roles-hero-icon">
+            <ShieldCheck size={28} />
+          </div>
           <div>
-            <h2>Roles</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              A role decides what a person can do and which KPIs they see. A person can hold several roles; they see what any of them allows.
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: 9999, color: "#ffffff" }}>
+                Enterprise Access Control
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#93c5fd" }}>
+                ● {w.roles.length} Active Role Profiles
+              </span>
+            </div>
+            <h2>Role-Scoped Permissions &amp; Access</h2>
+            <p>
+              Each role strictly governs what operational data a team member can view, which KPIs they monitor, and what administrative actions they can take across {w.organization.name}.
             </p>
           </div>
-          <button type="button" onClick={() => edit()}>+ New role</button>
         </div>
+        <button type="button" className="roles-hero-btn" onClick={() => edit()}>
+          <Plus size={16} />
+          <span>Create New Role</span>
+        </button>
       </section>
-      {editing && !editing.roleId && <RoleEditor w={w} change={change} value={editing} onChange={setEditing} onClose={() => setEditing(undefined)} tenant={tenant} />}
+
+      {editing && !editing.roleId && (
+        <RoleEditor
+          w={w}
+          change={change}
+          value={editing}
+          onChange={setEditing}
+          onClose={() => setEditing(undefined)}
+          tenant={tenant}
+        />
+      )}
+
       <div className="role-list">
         {w.roles.map((role) => {
           const draft = roleDraftFromGrants(role.grants);
@@ -451,20 +527,57 @@ function Roles({
           const roleMembers = w.members.filter((m) => m.roleIds.includes(role.id));
 
           return (
-            <section key={role.id} className={`saas-card role-card ${isOpen ? "open" : ""}`}>
-              <div className="saas-card-title">
-                <div>
-                  <h3>{role.name}</h3>
-                  <p className="muted" style={{ margin: "4px 0 0" }}>
-                    {count} {count === 1 ? "person" : "people"} · {unitName(draft.scopeUnitId)}
-                    {sees && <> · {draft.allKpis ? "every KPI" : `${draft.kpiIds.length} KPIs`}</>}
-                  </p>
+            <section key={role.id} className={`role-card ${isOpen ? "open" : ""}`}>
+              <div className="saas-card-title" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                      color: "#1d4ed8",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      boxShadow: "0 2px 6px rgba(37,99,235,0.12)",
+                    }}
+                  >
+                    <Shield size={22} />
+                  </div>
+                  <div>
+                    <h3>{role.name}</h3>
+                    <div className="role-meta-row">
+                      <span className="role-meta-pill">
+                        <Users size={12} color="#3b82f6" />
+                        <span>{count} {count === 1 ? "member" : "members"}</span>
+                      </span>
+                      <span className="role-meta-pill">
+                        <Globe size={12} color="#10b981" />
+                        <span>{unitName(draft.scopeUnitId)}</span>
+                      </span>
+                      {sees && (
+                        <span className="role-meta-pill">
+                          <BarChart3 size={12} color="#8b5cf6" />
+                          <span>{draft.allKpis ? "Every KPI in Catalog" : `${draft.kpiIds.length} Assigned KPIs`}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="csv-actions" style={{ marginTop: 0 }}>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {canCreateLogins && (
                     <button
                       type="button"
-                      className={isAddingLogin ? "" : "secondary"}
+                      className="role-btn-secondary"
+                      style={{
+                        background: isAddingLogin ? "#1e40af" : "#eff6ff",
+                        color: isAddingLogin ? "#ffffff" : "#1d4ed8",
+                        borderColor: isAddingLogin ? "#1e40af" : "#bfdbfe",
+                        fontWeight: 700,
+                      }}
                       onClick={() => {
                         if (isAddingLogin) {
                           setAddingRoleId(undefined);
@@ -476,114 +589,208 @@ function Roles({
                         }
                       }}
                     >
-                      {isAddingLogin ? "Close login form" : "+ Add employee login"}
+                      {isAddingLogin ? <X size={14} /> : <UserPlus size={14} />}
+                      <span>{isAddingLogin ? "Close Form" : "+ Add Employee Login"}</span>
                     </button>
                   )}
-                  <button type="button" className="secondary" onClick={() => (isOpen ? setEditing(undefined) : edit(role.id))}>
-                    {isOpen ? "Close" : "Edit"}
+                  <button
+                    type="button"
+                    className="role-btn-secondary"
+                    onClick={() => (isOpen ? setEditing(undefined) : edit(role.id))}
+                  >
+                    <Edit2 size={13} />
+                    <span>{isOpen ? "Close" : "Edit Role"}</span>
                   </button>
                   <button
                     type="button"
-                    className="secondary"
+                    className="role-btn-secondary"
                     disabled={count > 0}
                     title={count > 0 ? "Move these people to another role first" : undefined}
+                    style={{ color: count > 0 ? "#94a3b8" : "#dc2626", borderColor: count > 0 ? "#e2e8f0" : "#fecaca" }}
                     onClick={() => {
-                      if (window.confirm(`Delete the role “${role.name}”?`)) void change(`/roles/${role.id}/delete`, {});
+                      if (window.confirm(`Delete the role "${role.name}"?`)) void change(`/roles/${role.id}/delete`, {});
                     }}
                   >
-                    Delete
+                    <Trash2 size={13} />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
-              <div className="chip-row" style={{ marginTop: 10 }}>
-                {draft.capabilities.length === 0 && <span className="saas-badge">Can do nothing yet</span>}
-                {draft.capabilities.map((c) => (
-                  <span key={c} className="saas-badge">{capabilityLabel(c)}</span>
-                ))}
+
+              {/* Capability Chips */}
+              <div className="chip-row">
+                {draft.capabilities.length === 0 && (
+                  <span className="cap-badge cap-badge-configure">No capabilities granted yet</span>
+                )}
+                {draft.capabilities.map((c) => {
+                  if (c === "view") {
+                    return (
+                      <span key={c} className="cap-badge cap-badge-view">
+                        <Eye size={12} />
+                        <span>See Results</span>
+                      </span>
+                    );
+                  }
+                  if (c === "act") {
+                    return (
+                      <span key={c} className="cap-badge cap-badge-act">
+                        <CheckSquare size={12} />
+                        <span>Assign Actions</span>
+                      </span>
+                    );
+                  }
+                  if (c === "submit") {
+                    return (
+                      <span key={c} className="cap-badge cap-badge-submit">
+                        <Upload size={12} />
+                        <span>Upload Data</span>
+                      </span>
+                    );
+                  }
+                  if (c === "approve") {
+                    return (
+                      <span key={c} className="cap-badge cap-badge-approve">
+                        <ShieldAlert size={12} />
+                        <span>Approve Data</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={c} className="cap-badge cap-badge-configure">
+                      <Settings2 size={12} />
+                      <span>{capabilityLabel(c)}</span>
+                    </span>
+                  );
+                })}
               </div>
+
               {sees && !draft.allKpis && !isOpen && (
-                <details style={{ marginTop: 8 }}>
-                  <summary>Which KPIs</summary>
-                  <p className="muted">{draft.kpiIds.map((id) => kpiName.get(id) ?? "Retired KPI").join(" · ")}</p>
+                <details style={{ marginTop: 12, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #f1f5f9" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12.5, color: "#475569" }}>
+                    Which KPIs ({draft.kpiIds.length})
+                  </summary>
+                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.5 }}>
+                    {draft.kpiIds.map((id) => kpiName.get(id) ?? "Retired KPI").join(" · ")}
+                  </p>
                 </details>
               )}
 
               {/* Add login credentials panel for this role */}
               {isAddingLogin && (
-                <div className="role-add-login-panel">
-                  <h4>Add employee login for {role.name}</h4>
-                  <p className="muted" style={{ margin: "2px 0 10px", fontSize: 13 }}>
-                    Set up an email and password for this employee. You can provide these credentials directly to them.
-                  </p>
+                <div className="role-add-login-panel animate-in fade-in">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#dbeafe", color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <KeyRound size={17} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1e3a8a" }}>
+                        Add Employee Login for {role.name}
+                      </h4>
+                      <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "#64748b" }}>
+                        Generate authorized workspace credentials for this role. You can provide these credentials directly to the team member.
+                      </p>
+                    </div>
+                  </div>
+
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
                       void handleCreateRoleLogin(role.id, role.name);
                     }}
+                    style={{ marginTop: 16 }}
                   >
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <label>
-                        Name
+                    <div className="role-form-grid">
+                      <div className="role-field">
+                        <label className="role-field-label">
+                          <User size={13} color="#2563eb" />
+                          <span>Full Name</span>
+                        </label>
                         <input
+                          className="role-input"
                           type="text"
                           required
                           maxLength={120}
-                          placeholder="Employee name"
+                          placeholder="e.g. Rahul Mehta"
                           value={loginName}
                           onChange={(e) => setLoginName(e.target.value)}
                         />
-                      </label>
-                      <label>
-                        Employee email
+                      </div>
+                      <div className="role-field">
+                        <label className="role-field-label">
+                          <Mail size={13} color="#2563eb" />
+                          <span>Employee Work Email</span>
+                        </label>
                         <input
+                          className="role-input"
                           type="email"
                           required
-                          placeholder="employee@company.com"
+                          placeholder="e.g. rahul.m@beingsocial.demo"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
                         />
+                      </div>
+                    </div>
+
+                    <div className="role-field" style={{ marginTop: 14 }}>
+                      <label className="role-field-label">
+                        <Lock size={13} color="#2563eb" />
+                        <span>Temporary Password</span>
                       </label>
-                      <label>
-                        Password
-                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            required
-                            minLength={8}
-                            placeholder="Min 8 characters"
-                            value={loginPassword}
-                            onChange={(e) => setLoginPassword(e.target.value)}
-                            style={{ flex: 1, fontFamily: "ui-monospace, monospace" }}
-                          />
-                          <button
-                            type="button"
-                            className="secondary"
-                            title="Generate a secure temporary password"
-                            onClick={() => setLoginPassword(makeRandomPassword())}
-                          >
-                            🎲 Random
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? "Hide" : "Show"}
-                          </button>
-                        </div>
-                        <small className="muted" style={{ display: "block", marginTop: 4 }}>
-                          Min 8 characters. You can provide this password directly to the employee.
-                        </small>
-                      </label>
-                      {loginError && <p role="alert" className="errors">{loginError}</p>}
-                      <div className="csv-actions" style={{ marginTop: 4 }}>
-                        <button type="submit" disabled={loginBusy || !loginName.trim() || !loginEmail.trim() || loginPassword.length < 8}>
-                          {loginBusy ? "Creating login…" : "Create employee login"}
+                      <div className="role-pwd-wrap">
+                        <input
+                          className="role-input"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          minLength={8}
+                          placeholder="Min 8 characters"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="role-pwd-btn"
+                          title="Generate a secure temporary password"
+                          onClick={() => setLoginPassword(makeRandomPassword())}
+                        >
+                          <RefreshCw size={13} />
+                          <span>Random</span>
                         </button>
-                        <button type="button" className="secondary" onClick={() => setAddingRoleId(undefined)}>
-                          Cancel
+                        <button
+                          type="button"
+                          className="role-pwd-btn"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <span>{showPassword ? "Hide" : "Show"}</span>
                         </button>
                       </div>
+                      <small style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                        Minimum 8 characters. The employee will sign in with this temporary password.
+                      </small>
+                    </div>
+
+                    {loginError && (
+                      <p role="alert" style={{ margin: "12px 0 0", padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
+                        {loginError}
+                      </p>
+                    )}
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
+                      <button
+                        type="submit"
+                        className="role-btn-primary"
+                        disabled={loginBusy || !loginName.trim() || !loginEmail.trim() || loginPassword.length < 8}
+                      >
+                        <UserPlus size={15} />
+                        <span>{loginBusy ? "Provisioning Login…" : "Create Employee Login"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="role-btn-secondary"
+                        onClick={() => setAddingRoleId(undefined)}
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </form>
                 </div>
@@ -594,7 +801,7 @@ function Roles({
                 <div className="role-issued-credentials">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <strong style={{ color: "var(--good)" }}>✓ Credentials created — ready to provide to employee</strong>
-                    <button type="button" className="secondary" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => setIssuedForRole(undefined)}>
+                    <button type="button" className="role-btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setIssuedForRole(undefined)}>
                       Done
                     </button>
                   </div>
@@ -605,58 +812,85 @@ function Roles({
               {/* People assigned to this role */}
               <div className="role-members-box">
                 <div className="role-members-header">
-                  <strong>People in this role ({roleMembers.length})</strong>
+                  <strong>
+                    <Users size={15} color="#2563eb" />
+                    <span>People in this role ({roleMembers.length})</span>
+                  </strong>
                 </div>
                 {roleMembers.length === 0 ? (
-                  <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-                    No one has been assigned to this role yet. Click <strong>+ Add employee login</strong> above to create credentials.
-                  </p>
+                  <div style={{ padding: "12px 16px", background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 10, color: "#64748b", fontSize: 13 }}>
+                    No team members assigned to this role yet. Click <strong>+ Add Employee Login</strong> above to provision credentials.
+                  </div>
                 ) : (
                   <div className="role-members-list">
                     {roleMembers.map((m) => (
-                      <div key={m.id} className="role-member-item">
-                        <div className="role-member-top">
+                      <div key={m.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div className="role-member-item">
                           <div className="role-member-info">
-                            <strong>{m.subject === w.subject ? `${m.displayName} (You)` : m.displayName}</strong>
-                            {m.email && <span className="muted">({m.email})</span>}
-                            {!m.active && <span className="saas-badge bad">Revoked</span>}
-                            {m.owner && <span className="saas-badge good">Owner</span>}
-                            {m.roleIds.length > 1 && (
-                              <span className="muted" style={{ fontSize: 12 }}>
-                                +{m.roleIds.length - 1} other role{m.roleIds.length > 2 ? "s" : ""}
-                              </span>
-                            )}
+                            <div className="role-member-avatar">
+                              {initialOf(m.displayName || m.email || "U")}
+                            </div>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span className="role-member-name">
+                                  {m.subject === w.subject ? `${m.displayName} (You)` : m.displayName}
+                                </span>
+                                {m.owner && (
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "#f3e8ff", color: "#7e22ce", border: "1px solid #d8b4fe" }}>
+                                    Owner
+                                  </span>
+                                )}
+                                {m.active ? (
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "#ecfdf5", color: "#047857", border: "1px solid #a7f3d0" }}>
+                                    ● Active
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+                                    Revoked
+                                  </span>
+                                )}
+                              </div>
+                              {m.email && <span className="role-member-email">{m.email}</span>}
+                              {m.roleIds.length > 1 && (
+                                <span style={{ fontSize: 11.5, color: "#64748b", marginLeft: 6 }}>
+                                  +{m.roleIds.length - 1} other role{m.roleIds.length > 2 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
                           </div>
+
                           {!m.owner && (
                             <div className="role-member-actions">
                               {m.active && canCreateLogins && (
                                 <button
                                   type="button"
-                                  className="secondary"
+                                  className="role-member-btn"
                                   onClick={() => {
                                     setResettingMemberId(resettingMemberId === m.id ? undefined : m.id);
                                     setResetPasswordValue(makeRandomPassword());
                                   }}
                                 >
-                                  {resettingMemberId === m.id ? "Cancel" : "Change credentials"}
+                                  <KeyRound size={12} color="#2563eb" />
+                                  <span>{resettingMemberId === m.id ? "Cancel" : "Credentials"}</span>
                                 </button>
                               )}
                               {m.active && (
                                 <button
                                   type="button"
-                                  className="secondary"
+                                  className="role-member-btn"
                                   onClick={() => {
                                     setEditingMemberId(editingMemberId === m.id ? undefined : m.id);
                                     setEditingMemberRoles(m.roleIds);
                                   }}
                                 >
-                                  {editingMemberId === m.id ? "Cancel" : "Edit roles"}
+                                  <UserCog size={12} color="#059669" />
+                                  <span>{editingMemberId === m.id ? "Cancel" : "Edit Roles"}</span>
                                 </button>
                               )}
                               {m.active && (
                                 <button
                                   type="button"
-                                  className="secondary"
+                                  className="role-member-btn"
                                   onClick={() => {
                                     if (window.confirm(`Remove ${m.email ?? m.displayName} from the role "${role.name}"?`)) {
                                       const newRoles = m.roleIds.filter((id) => id !== role.id);
@@ -664,13 +898,14 @@ function Roles({
                                     }
                                   }}
                                 >
-                                  Remove from role
+                                  <UserMinus size={12} color="#d97706" />
+                                  <span>Remove</span>
                                 </button>
                               )}
                               {m.active ? (
                                 <button
                                   type="button"
-                                  className="secondary"
+                                  className="role-member-btn danger"
                                   onClick={() => {
                                     if (window.confirm(`Revoke access for ${m.email ?? m.displayName}?`)) {
                                       void change(`/members/${m.id}/revoke`, {}).then(() => reload());
@@ -682,7 +917,7 @@ function Roles({
                               ) : (
                                 <button
                                   type="button"
-                                  className="secondary"
+                                  className="role-member-btn"
                                   onClick={() => void change(`/members/${m.id}/restore`, {}).then(() => reload())}
                                 >
                                   Restore
@@ -724,6 +959,8 @@ function Roles({
                               </button>
                               <button
                                 type="button"
+                                className="role-btn-primary"
+                                style={{ padding: "6px 14px", fontSize: 12 }}
                                 disabled={resetBusy || resetPasswordValue.length < 8}
                                 onClick={() => void handleResetPassword(m, role.id)}
                               >
@@ -765,6 +1002,8 @@ function Roles({
                             <div className="csv-actions" style={{ marginTop: 4 }}>
                               <button
                                 type="button"
+                                className="role-btn-primary"
+                                style={{ padding: "6px 14px", fontSize: 12 }}
                                 onClick={() => void (async () => {
                                   const ok = await change(`/members/${m.id}/roles`, { roleIds: editingMemberRoles });
                                   if (ok) {
@@ -793,7 +1032,7 @@ function Roles({
         })}
       </div>
       {w.roles.length === 0 && !editing && <p className="muted">No roles yet. Create one to start giving people access.</p>}
-    </>
+    </div>
   );
 }
 
