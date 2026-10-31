@@ -72,6 +72,7 @@ type Tab =
   | "SaaS Orgs";
 
 const EXECUTIVE_NAV_ITEMS = [
+  { id: "Organization" as Tab, label: "Org Admin Dashboard", icon: Building2 },
   { id: "Morning Brief" as Tab, label: "Morning Brief", icon: LayoutGrid },
   { id: "Roles & Access" as Tab, label: "Roles & Permissions", icon: Shield },
   { id: "KPI Catalog" as Tab, label: "KPI Catalog & Library", icon: BarChart3 },
@@ -179,6 +180,7 @@ export function SaasRoute() {
 
   const allowedNavItems = useMemo(() => {
     return EXECUTIVE_NAV_ITEMS.filter((item) => {
+      if (item.id === "Organization") return isViewingAsAdmin;
       if (item.id === "Morning Brief") return true;
       if (item.id === "Roles & Access") return canManageRoles;
       if (item.id === "KPI Catalog") return canManageCatalog;
@@ -187,22 +189,21 @@ export function SaasRoute() {
       if (item.id === "Activity") return canAccessAudit;
       return true;
     });
-  }, [canManageRoles, canManageCatalog, canAccessData, canAccessActions, canAccessAudit]);
+  }, [isViewingAsAdmin, canManageRoles, canManageCatalog, canAccessData, canAccessActions, canAccessAudit]);
 
-  // Guard tab route: if user is on a disallowed tab, redirect to Morning Brief
+  // Guard tab route: if user is on a disallowed tab, redirect to default
   useEffect(() => {
     if (!workspace) return;
     const isCurrentTabAllowed = allowedNavItems.some(
       (item) =>
         tab === item.id ||
-        (item.id === "Roles & Access" && tab === "Organization") ||
         (item.id === "KPI Catalog" && tab === "KPI library") ||
         (item.id === "Decisions & Actions" && tab === "Actions")
     );
     if (!isCurrentTabAllowed) {
-      setTab("Morning Brief");
+      setTab(isViewingAsAdmin ? "Organization" : "Morning Brief");
     }
-  }, [allowedNavItems, tab, workspace]);
+  }, [allowedNavItems, tab, workspace, isViewingAsAdmin]);
 
   const reload = useCallback(async () => {
     if (!tenant) return;
@@ -214,7 +215,6 @@ export function SaasRoute() {
     ++generation.current;
     setWorkspace(undefined);
     setMessage("");
-    setTab("Morning Brief");
     setLoading(!!id);
     setTenant(id);
   }, []);
@@ -316,10 +316,17 @@ export function SaasRoute() {
   useEffect(() => {
     const current = generation.current;
     if (!tenant || isClosed) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialTabParam = urlParams.get("tab");
     request(`/api/saas/${tenant}/workspace`, WorkspaceSchema)
       .then((value) => {
         if (current !== generation.current) return;
         setWorkspace(value);
+        const isOwner = Boolean(value?.me?.owner || value?.organization.owner);
+        const isAdmin = isOwner || Boolean(value?.me?.roles?.some((r) => r.name.toLowerCase().includes("admin")));
+        if (isAdmin && !initialTabParam) {
+          setTab("Organization");
+        }
       })
       .catch((e) => {
         if (current === generation.current) setMessage(e.message);
@@ -624,7 +631,6 @@ export function SaasRoute() {
               const IconComp = item.icon;
               const isActive =
                 tab === item.id ||
-                (item.id === "Roles & Access" && tab === "Organization") ||
                 (item.id === "KPI Catalog" && tab === "KPI library") ||
                 (item.id === "Decisions & Actions" && tab === "Actions");
               return (
