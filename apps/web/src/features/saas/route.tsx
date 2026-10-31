@@ -124,63 +124,50 @@ export function SaasRoute() {
   const [viewingAsSupervisor, setViewingAsSupervisor] = useState(false);
   const resetSignal = 0;
 
-  // Active viewing role state (allows Org Admin to preview employee role perspectives)
-  const [selectedRoleId, setSelectedRoleId] = useState<string>("current");
-
   const isActualOwner = Boolean(workspace?.me?.owner || workspace?.organization.owner);
   const isActualAdmin =
     isActualOwner ||
     Boolean(workspace?.me?.roles?.some((r) => r.name.toLowerCase().includes("admin")));
 
-  // Only the actual Organization Admin or Platform Operator in supervisor mode can preview employee perspectives.
-  // Regular employees (emp) NEVER see a role perspective switcher!
-  const canSwitchPerspective = Boolean(isActualAdmin || viewingAsSupervisor);
+  // User's assigned roles directly from verified database membership
+  const userRoles = useMemo(() => {
+    if (!workspace?.me?.roles) return [];
+    return workspace.roles.filter((r) => workspace.me!.roles.some((mr) => mr.id === r.id));
+  }, [workspace]);
 
   const activeRole = useMemo(() => {
-    if (!workspace) return undefined;
-    if (selectedRoleId === "admin") {
-      return undefined; // Force full admin view
-    }
-    if (selectedRoleId !== "current" && selectedRoleId !== "admin") {
-      return workspace.roles.find((r) => r.id === selectedRoleId);
-    }
-    // Default "current" behavior:
-    if (!isActualAdmin && workspace.me?.roles && workspace.me.roles.length > 0) {
-      const firstRoleId = workspace.me.roles[0]?.id;
-      return workspace.roles.find((r) => r.id === firstRoleId);
-    }
-    return undefined;
-  }, [workspace, selectedRoleId, isActualAdmin]);
+    if (!workspace || isActualAdmin) return undefined;
+    return userRoles[0];
+  }, [workspace, isActualAdmin, userRoles]);
 
-  const isViewingAsAdmin =
-    (isActualAdmin && selectedRoleId === "current" && !activeRole) ||
-    selectedRoleId === "admin";
+  // Attribute-based capabilities from verified credentials & roles
+  const activeCapabilities = useMemo(() => {
+    if (isActualAdmin) {
+      return new Set(["configure", "submit", "approve", "view", "act"]);
+    }
+    const caps = new Set<string>();
+    for (const r of userRoles) {
+      for (const g of r.grants ?? []) {
+        caps.add(g.capability);
+      }
+    }
+    return caps;
+  }, [isActualAdmin, userRoles]);
 
-  const activeGrants = activeRole?.grants ?? [];
-  const activeCapabilities = useMemo(
-    () =>
-      new Set(
-        isViewingAsAdmin
-          ? ["configure", "submit", "approve", "view", "act"]
-          : activeGrants.map((g) => g.capability)
-      ),
-    [isViewingAsAdmin, activeGrants]
-  );
-
-  const canManageRoles = isViewingAsAdmin;
-  const canManageCatalog = isViewingAsAdmin || activeCapabilities.has("configure");
+  const canManageRoles = isActualAdmin;
+  const canManageCatalog = isActualAdmin || activeCapabilities.has("configure");
   const canAccessData =
-    isViewingAsAdmin ||
+    isActualAdmin ||
     activeCapabilities.has("submit") ||
     activeCapabilities.has("approve");
   const canAccessActions =
-    isViewingAsAdmin ||
+    isActualAdmin ||
     activeCapabilities.has("act");
-  const canAccessAudit = isViewingAsAdmin;
+  const canAccessAudit = isActualAdmin;
 
   const allowedNavItems = useMemo(() => {
     return EXECUTIVE_NAV_ITEMS.filter((item) => {
-      if (item.id === "Organization") return isViewingAsAdmin;
+      if (item.id === "Organization") return isActualAdmin;
       if (item.id === "Morning Brief") return true;
       if (item.id === "Roles & Access") return canManageRoles;
       if (item.id === "KPI Catalog") return canManageCatalog;
@@ -189,7 +176,7 @@ export function SaasRoute() {
       if (item.id === "Activity") return canAccessAudit;
       return true;
     });
-  }, [isViewingAsAdmin, canManageRoles, canManageCatalog, canAccessData, canAccessActions, canAccessAudit]);
+  }, [isActualAdmin, canManageRoles, canManageCatalog, canAccessData, canAccessActions, canAccessAudit]);
 
   // Guard tab route: if user is on a disallowed tab, redirect to default
   useEffect(() => {
@@ -201,9 +188,9 @@ export function SaasRoute() {
         (item.id === "Decisions & Actions" && tab === "Actions")
     );
     if (!isCurrentTabAllowed) {
-      setTab(isViewingAsAdmin ? "Organization" : "Morning Brief");
+      setTab(isActualAdmin ? "Organization" : "Morning Brief");
     }
-  }, [allowedNavItems, tab, workspace, isViewingAsAdmin]);
+  }, [allowedNavItems, tab, workspace, isActualAdmin]);
 
   const reload = useCallback(async () => {
     if (!tenant) return;
@@ -324,8 +311,25 @@ export function SaasRoute() {
         setWorkspace(value);
         const isOwner = Boolean(value?.me?.owner || value?.organization.owner);
         const isAdmin = isOwner || Boolean(value?.me?.roles?.some((r) => r.name.toLowerCase().includes("admin")));
-        if (isAdmin && !initialTabParam) {
-          setTab("Organization");
+        if (!initialTabParam) {
+          if (isAdmin) {
+            setTab("Organization");
+          } else {
+            const memberRoles = value?.roles.filter((r) => value?.me?.roles?.some((mr) => mr.id === r.id)) ?? [];
+            const caps = new Set<string>();
+            for (const r of memberRoles) {
+              for (const g of r.grants ?? []) caps.add(g.capability);
+            }
+            if (caps.has("view")) {
+              setTab("Morning Brief");
+            } else if (caps.has("submit") || caps.has("approve")) {
+              setTab("Data & approvals");
+            } else if (caps.has("act")) {
+              setTab("Decisions & Actions");
+            } else {
+              setTab("Morning Brief");
+            }
+          }
         }
       })
       .catch((e) => {
@@ -556,73 +560,22 @@ export function SaasRoute() {
             <div className="exec-profile-info">
               <span className="exec-profile-title" title={email}>{profileName || email || "Org Admin"}</span>
               <span className="exec-profile-role">
-                {viewingAsSupervisor
-                  ? "Platform Operator (Supervisor)"
-                  : activeRole
-                  ? activeRole.name
-                  : workspace?.organization.owner
+                {isActualAdmin
                   ? "Org Admin (Manager)"
-                  : (workspace?.me?.roles?.map((r) => r.name).join(", ") || "Role Member")}
+                  : userRoles.length > 0
+                  ? userRoles.map((r) => r.name).join(", ")
+                  : "Member"}
               </span>
             </div>
           </div>
 
-          {/* Role View Switcher for Admins & Localhost Testing */}
-          {canSwitchPerspective && workspace?.roles && workspace.roles.length > 0 && (
-            <div
-              style={{
-                background: "#111e3f",
-                border: "1px solid #1e2e5c",
-                borderRadius: 10,
-                padding: "10px 12px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#93c5fd" }}>
-                  Role View Perspective
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, background: "#1e3a8a", color: "#bfdbfe", padding: "1px 6px", borderRadius: 4 }}>
-                  {isViewingAsAdmin ? "Full Admin" : activeRole?.name ?? "Scoped"}
-                </span>
-              </div>
-              <select
-                value={selectedRoleId}
-                onChange={(e) => setSelectedRoleId(e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "#0b1329",
-                  color: "#f8fafc",
-                  border: "1px solid #2563eb",
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  outline: "none",
-                }}
-                title="Switch between Admin view and role-scoped employee view"
-              >
-                <option value="current">
-                  {isActualAdmin ? "👑 Organization Admin (Current Login)" : `👤 My Assigned Role (${workspace?.me?.roles?.[0]?.name ?? "Member"})`}
-                </option>
-                <option value="admin">👑 Full Organization Admin (All Features)</option>
-                <optgroup label="Employee Role Perspectives">
-                  {workspace.roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      👤 {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
-          )}
-
           {/* Section Header */}
           <div className="exec-sidebar-section-title">
-            {activeRole ? `${activeRole.name.toUpperCase()} WORKSPACE` : "ORGANIZATION WORKSPACE"}
+            {isActualAdmin
+              ? "ORGANIZATION WORKSPACE"
+              : userRoles.length > 0 && userRoles[0]?.name
+              ? `${userRoles[0].name.toUpperCase()} WORKSPACE`
+              : "MEMBER WORKSPACE"}
           </div>
 
           {/* Navigation Items (Filtered by Role) */}
